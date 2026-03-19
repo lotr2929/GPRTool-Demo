@@ -226,7 +226,7 @@ body {
 }
 
 #body-container {
-  flex: 1 1 auto;
+  flex: 1 1 0;       /* 0 base size forces height to be determined by flex, not content */
   min-height: 0;
   width: 100%;
   overflow: hidden;
