@@ -206,6 +206,7 @@
     controls2D.minZoom           = 0.05;
     controls2D.maxZoom           = 50;
     controls2D.mouseButtons      = { LEFT: THREE.MOUSE.PAN, MIDDLE: THREE.MOUSE.DOLLY, RIGHT: THREE.MOUSE.PAN };
+    // No pan limits — grid is 10km×10km, effectively infinite for urban sites.
 
     let controls = controls2D; // matches starting camera
 
@@ -331,7 +332,7 @@
       const siteSpan = Math.max(size.x, size.z);
 
       fit2DCamera(box);
-      updateSceneHelpers(siteSpan); // grid now reads correct frustum from fit2DCamera
+      updateSceneHelpers(siteSpan);
       switchMode('2d');
 
       // Update properties panel
@@ -384,7 +385,9 @@
       camera2D.top    =  halfH;
       camera2D.bottom = -halfH;
       camera2D.updateProjectionMatrix();
+      // Site geometry is centred at scene origin — target stays at site centre
       controls2D.target.set(center.x, 0, center.z);
+      camera2D.position.set(center.x, 500, center.z);
       controls2D.update();
     }
 
