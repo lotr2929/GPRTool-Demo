@@ -145,6 +145,7 @@
 
     let currentMode      = '2d';
     let siteBoundaryLine = null;   // THREE.LineLoop  — orange site outline
+    let siteSurface      = null;   // THREE.Mesh      — filled site polygon, light beige
     let terrainMesh      = null;   // THREE.Mesh      — elevation surface (terrain session)
     let gridHelper       = null;
     let axesHelper       = null;
@@ -380,6 +381,21 @@
       siteBoundaryLine = new THREE.LineLoop(geom, mat);
       scene.add(siteBoundaryLine);
 
+      // Filled site surface — light beige, slightly below the boundary line (Y=-0.05)
+      // Uses THREE.Shape + ShapeGeometry for automatic triangulation
+      if (siteSurface) { scene.remove(siteSurface); siteSurface.geometry.dispose(); siteSurface = null; }
+      const shape = new THREE.Shape(points.map(p => new THREE.Vector2(p.x, p.z)));
+      const shapeGeom = new THREE.ShapeGeometry(shape);
+      // ShapeGeometry is in XY plane — rotate to XZ (lay flat)
+      shapeGeom.rotateX(-Math.PI / 2);
+      // Shift down slightly so boundary line renders on top
+      shapeGeom.translate(0, -0.05, 0);
+      siteSurface = new THREE.Mesh(
+        shapeGeom,
+        new THREE.MeshBasicMaterial({ color: 0xf5f0e8, side: THREE.DoubleSide })
+      );
+      scene.add(siteSurface);
+
       // Compute extents for camera framing
       const box    = new THREE.Box3().setFromObject(siteBoundaryLine);
       const size   = new THREE.Vector3();
@@ -604,6 +620,11 @@
         scene.remove(siteBoundaryLine);
         siteBoundaryLine.geometry.dispose();
         siteBoundaryLine = null;
+      }
+      if (siteSurface) {
+        scene.remove(siteSurface);
+        siteSurface.geometry.dispose();
+        siteSurface = null;
       }
       if (terrainMesh) {
         scene.remove(terrainMesh);

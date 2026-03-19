@@ -1,0 +1,152 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "site_boundary",
+        "name": "Test Site with Contours — Kalamunda Foothills",
+        "area_approx_m2": 16800,
+        "location": "Kalamunda, Western Australia",
+        "crs": "WGS84"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [116.05420, -31.97350],
+            [116.05560, -31.97350],
+            [116.05580, -31.97390],
+            [116.05570, -31.97460],
+            [116.05520, -31.97490],
+            [116.05420, -31.97485],
+            [116.05385, -31.97445],
+            [116.05390, -31.97375],
+            [116.05420, -31.97350]
+          ]
+        ]
+      }
+    },
+
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "contour",
+        "elevation": 50,
+        "elevation_unit": "m",
+        "interval": "major"
+      },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [116.05385, -31.97438],
+          [116.05420, -31.97445],
+          [116.05480, -31.97448],
+          [116.05540, -31.97440],
+          [116.05575, -31.97420]
+        ]
+      }
+    },
+
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "contour",
+        "elevation": 52,
+        "elevation_unit": "m",
+        "interval": "minor"
+      },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [116.05388, -31.97418],
+          [116.05430, -31.97422],
+          [116.05490, -31.97425],
+          [116.05545, -31.97415],
+          [116.05578, -31.97400]
+        ]
+      }
+    },
+
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "contour",
+        "elevation": 54,
+        "elevation_unit": "m",
+        "interval": "minor"
+      },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [116.05392, -31.97400],
+          [116.05435, -31.97402],
+          [116.05495, -31.97404],
+          [116.05550, -31.97394],
+          [116.05578, -31.97380]
+        ]
+      }
+    },
+
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "contour",
+        "elevation": 56,
+        "elevation_unit": "m",
+        "interval": "minor"
+      },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [116.05395, -31.97382],
+          [116.05438, -31.97383],
+          [116.05500, -31.97383],
+          [116.05555, -31.97373],
+          [116.05578, -31.97360]
+        ]
+      }
+    },
+
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "contour",
+        "elevation": 58,
+        "elevation_unit": "m",
+        "interval": "minor"
+      },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [116.05398, -31.97365],
+          [116.05442, -31.97364],
+          [116.05505, -31.97363],
+          [116.05558, -31.97354],
+          [116.05578, -31.97358]
+        ]
+      }
+    },
+
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "contour",
+        "elevation": 60,
+        "elevation_unit": "m",
+        "interval": "major"
+      },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [116.05420, -31.97350],
+          [116.05448, -31.97350],
+          [116.05510, -31.97350],
+          [116.05560, -31.97350]
+        ]
+      }
+    }
+
+  ]
+}

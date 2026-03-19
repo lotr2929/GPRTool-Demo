@@ -84,6 +84,29 @@ to the site by one of:
 
 ---
 
+## Workflow 3 — Simple geometry test object
+
+**Files:** `test_cube.obj` + `test_cube.dxf`
+
+A 10m × 10m × 10m cube centred at the scene origin (X=0, Z=0), base at Y=0.
+Use these to test geometry import, 2D/3D rendering, and measurement tools
+before working with complex building models.
+
+| Property       | Value            |
+|----------------|------------------|
+| Width (X)      | 10m              |
+| Depth (Z)      | 10m              |
+| Height (Y)     | 10m              |
+| Footprint area | 100 m²           |
+| Origin         | Centred at 0,0,0 |
+| Base           | Y = 0            |
+
+Available in two formats:
+- `test_cube.obj` — Wavefront OBJ, ready for Three.js direct import
+- `test_cube.dxf` — DXF R2010, layers: `BUILDING_FOOTPRINT` + `BUILDING_MASS`
+
+---
+
 ## Site summary (both files)
 
 ```

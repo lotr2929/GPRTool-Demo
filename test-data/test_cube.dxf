@@ -1,0 +1,309 @@
+  0
+SECTION
+  2
+HEADER
+  9
+$ACADVER
+  1
+AC1015
+  9
+$INSUNITS
+ 70
+6
+  9
+$MEASUREMENT
+ 70
+1
+  0
+ENDSEC
+  0
+SECTION
+  2
+TABLES
+  0
+TABLE
+  2
+LAYER
+ 70
+2
+  0
+LAYER
+  2
+BUILDING_MASS
+ 70
+0
+ 62
+4
+  6
+CONTINUOUS
+  0
+LAYER
+  2
+BUILDING_FOOTPRINT
+ 70
+0
+ 62
+1
+  6
+CONTINUOUS
+  0
+ENDTABLE
+  0
+ENDSEC
+  0
+SECTION
+  2
+ENTITIES
+
+  0
+COMMENT
+  1
+=============================================================
+  GPRTool Test Object — Simple Cube (DXF)
+  10m x 10m x 10m, centred at X=0 Z=0, base at Y=0
+  Units: metres | Origin: 0,0,0
+=============================================================
+
+  0
+COMMENT
+  1
+--- BUILDING FOOTPRINT (base, Z=0) ---
+
+  0
+LWPOLYLINE
+  8
+BUILDING_FOOTPRINT
+ 90
+4
+ 70
+1
+ 10
+-5.0
+ 20
+-5.0
+ 10
+5.0
+ 20
+-5.0
+ 10
+5.0
+ 20
+5.0
+ 10
+-5.0
+ 20
+5.0
+
+  0
+COMMENT
+  1
+--- BUILDING MASS (6 faces as 3DFACE pairs) ---
+
+  0
+COMMENT
+  1
+South face (Z=-5)
+
+  0
+3DFACE
+  8
+BUILDING_MASS
+ 10
+-5.0
+ 20
+-5.0
+ 30
+0.0
+ 11
+5.0
+ 21
+-5.0
+ 31
+0.0
+ 12
+5.0
+ 22
+-5.0
+ 32
+10.0
+ 13
+-5.0
+ 23
+-5.0
+ 33
+10.0
+
+  0
+COMMENT
+  1
+North face (Z=+5)
+
+  0
+3DFACE
+  8
+BUILDING_MASS
+ 10
+5.0
+ 20
+5.0
+ 30
+0.0
+ 11
+-5.0
+ 21
+5.0
+ 31
+0.0
+ 12
+-5.0
+ 22
+5.0
+ 32
+10.0
+ 13
+5.0
+ 23
+5.0
+ 33
+10.0
+
+  0
+COMMENT
+  1
+East face (X=+5)
+
+  0
+3DFACE
+  8
+BUILDING_MASS
+ 10
+5.0
+ 20
+-5.0
+ 30
+0.0
+ 11
+5.0
+ 21
+5.0
+ 31
+0.0
+ 12
+5.0
+ 22
+5.0
+ 32
+10.0
+ 13
+5.0
+ 23
+-5.0
+ 33
+10.0
+
+  0
+COMMENT
+  1
+West face (X=-5)
+
+  0
+3DFACE
+  8
+BUILDING_MASS
+ 10
+-5.0
+ 20
+5.0
+ 30
+0.0
+ 11
+-5.0
+ 21
+-5.0
+ 31
+0.0
+ 12
+-5.0
+ 22
+-5.0
+ 32
+10.0
+ 13
+-5.0
+ 23
+5.0
+ 33
+10.0
+
+  0
+COMMENT
+  1
+Top face (Y=+10)
+
+  0
+3DFACE
+  8
+BUILDING_MASS
+ 10
+-5.0
+ 20
+-5.0
+ 30
+10.0
+ 11
+5.0
+ 21
+-5.0
+ 31
+10.0
+ 12
+5.0
+ 22
+5.0
+ 32
+10.0
+ 13
+-5.0
+ 23
+5.0
+ 33
+10.0
+
+  0
+COMMENT
+  1
+Bottom face (Y=0)
+
+  0
+3DFACE
+  8
+BUILDING_MASS
+ 10
+-5.0
+ 20
+5.0
+ 30
+0.0
+ 11
+5.0
+ 21
+5.0
+ 31
+0.0
+ 12
+5.0
+ 22
+-5.0
+ 32
+0.0
+ 13
+-5.0
+ 23
+-5.0
+ 33
+0.0
+
+  0
+ENDSEC
+  0
+EOF
