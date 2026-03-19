@@ -446,7 +446,12 @@
     }
     new ResizeObserver(resizeToContainer).observe(container);
     // Defer initial resize until after first paint so clientHeight is correct
-    requestAnimationFrame(() => requestAnimationFrame(resizeToContainer));
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      console.log('viewport clientWidth:', container.clientWidth, 'clientHeight:', container.clientHeight);
+      console.log('viewport offsetWidth:', container.offsetWidth, 'offsetHeight:', container.offsetHeight);
+      console.log('viewport getBoundingClientRect:', JSON.stringify(container.getBoundingClientRect()));
+      resizeToContainer();
+    }));
 
     /* ============================================================
        ANIMATION LOOP
