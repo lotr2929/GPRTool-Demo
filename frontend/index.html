@@ -301,6 +301,7 @@
        SITE BOUNDARY DRAWING
     ============================================================ */
     function drawSiteBoundary(coords) {
+      suppressResize = true; // prevent ResizeObserver firing during DOM updates
       // Remove any existing boundary
       if (siteBoundaryLine) {
         scene.remove(siteBoundaryLine);
@@ -345,6 +346,7 @@
       document.getElementById('clearSiteBtn').style.display      = 'block';
       document.getElementById('left-panel').classList.add('site-imported');
 
+      suppressResize = false; // re-enable resize handling
       showFeedback(`Site loaded — ${coords.length - 1} points, ${area.toFixed(0)} m²`);
     }
 
@@ -427,29 +429,34 @@
     /* ============================================================
        RESIZE
     ============================================================ */
+    // Guard: true while drawSiteBoundary is running — suppresses spurious
+    // ResizeObserver callbacks triggered by DOM changes during site load.
+    let suppressResize = false;
+
+    let resizeRAF = null;
     function resizeToContainer() {
-      const w = container.clientWidth  || 1;
-      const h = container.clientHeight || 1;
-      renderer.setSize(w, h, false);
+      if (suppressResize) return;
+      // Debounce — only execute on the trailing edge of rapid calls
+      if (resizeRAF) cancelAnimationFrame(resizeRAF);
+      resizeRAF = requestAnimationFrame(() => {
+        resizeRAF = null;
+        const w = container.clientWidth  || 1;
+        const h = container.clientHeight || 1;
+        renderer.setSize(w, h, false);
 
-      // 3D — update aspect ratio
-      camera3D.aspect = w / h;
-      camera3D.updateProjectionMatrix();
+        camera3D.aspect = w / h;
+        camera3D.updateProjectionMatrix();
 
-      // 2D — preserve vertical span, recompute horizontal for new aspect
-      // halfH is derived from top/bottom which fit2DCamera sets correctly.
-      // Guard: if no site loaded yet, top/bottom are still the init ±50.
-      const aspect = w / h;
-      const halfH  = (camera2D.top - camera2D.bottom) / 2 || 50;
-      camera2D.left   = -halfH * aspect;
-      camera2D.right  =  halfH * aspect;
-      camera2D.updateProjectionMatrix();
+        const aspect = w / h;
+        const halfH  = (camera2D.top - camera2D.bottom) / 2 || 50;
+        camera2D.left   = -halfH * aspect;
+        camera2D.right  =  halfH * aspect;
+        camera2D.updateProjectionMatrix();
 
-      // Re-fit if a site is loaded — ensures boundary stays fully visible
-      // after any resize (window resize, panel collapse, etc.)
-      if (siteBoundaryLine) {
-        fit2DCamera(new THREE.Box3().setFromObject(siteBoundaryLine));
-      }
+        if (siteBoundaryLine) {
+          fit2DCamera(new THREE.Box3().setFromObject(siteBoundaryLine));
+        }
+      });
     }
     new ResizeObserver(resizeToContainer).observe(container);
     requestAnimationFrame(() => requestAnimationFrame(resizeToContainer));
