@@ -175,10 +175,12 @@
     camera3D.position.set(100, 100, 100);
 
     // 2D — orthographic top-down
-    const camera2D = new THREE.OrthographicCamera(-50, 50, 50, -50, 0.1, 10000);
-    camera2D.up.set(0, 0, -1); // set BEFORE lookAt so matrix is correct from the start
-    camera2D.position.set(0, 500, 0);
-    camera2D.lookAt(0, 0, 0);
+    // Camera looks straight down the -Y axis.
+    // We set the rotation directly via quaternion — no lookAt, no up vector fighting.
+    const camera2D = new THREE.OrthographicCamera(-50, 50, 50, -50, 1, 2000);
+    camera2D.position.set(0, 1000, 0);
+    // Rotate -90 degrees around X so camera points down (-Y), with Z as screen-up
+    camera2D.quaternion.setFromAxisAngle(new THREE.Vector3(1, 0, 0), -Math.PI / 2);
 
     let camera = camera2D; // start in 2D
 
@@ -248,9 +250,9 @@
 
     function update2DCamera() {
       camera2D.zoom = zoom2D;
-      camera2D.position.set(pan2D.x, 500, pan2D.z);
-      camera2D.up.set(0, 0, -1);
-      camera2D.lookAt(pan2D.x, 0, pan2D.z);
+      camera2D.position.set(pan2D.x, 1000, pan2D.z);
+      // Always point straight down — set via quaternion, never via lookAt
+      camera2D.quaternion.setFromAxisAngle(new THREE.Vector3(1, 0, 0), -Math.PI / 2);
       camera2D.updateProjectionMatrix();
     }
 
@@ -271,7 +273,7 @@
     ============================================================ */
     function updateSceneHelpers(siteSpan) {
       if (gridHelper) { scene.remove(gridHelper); gridHelper.geometry?.dispose(); gridHelper = null; }
-      if (axesHelper) { scene.remove(axesHelper); axesHelper = null; }
+      if (axesHelper) { scene.remove(axesHelper); axesHelper = null; } // Group or AxesHelper
 
       // Grid is always large enough that the user can never zoom out to its edge.
       // 10,000m covers any realistic urban site at any zoom level.
@@ -282,20 +284,24 @@
       const cellSize = rawCell < 1 ? 1 : rawCell < 2 ? 2 : rawCell < 5 ? 5 : 10;
       const divisions = gridSize / cellSize;
 
-      gridHelper = new THREE.GridHelper(gridSize, divisions, 0x7a8a5a, 0x8a9b6f);
+      gridHelper = new THREE.GridHelper(gridSize, divisions, 0xb0bfa8, 0xd0d9c8);
       gridHelper.visible = (currentMode === '2d');
       scene.add(gridHelper);
 
-      axesHelper = new THREE.AxesHelper(siteSpan * 0.08);
+      // Custom axes — thick, labelled, clearly visible on the grid
+      const axisLen = siteSpan * 0.3;
+      const makeAxis = (dir, color) => {
+        const geom = new THREE.BufferGeometry().setFromPoints([
+          new THREE.Vector3(0, 0.5, 0),
+          dir.clone().multiplyScalar(axisLen)
+        ]);
+        return new THREE.Line(geom, new THREE.LineBasicMaterial({ color }));
+      };
+      axesHelper = new THREE.Group();
+      axesHelper.add(makeAxis(new THREE.Vector3(1, 0, 0), 0xff2222)); // X — red
+      axesHelper.add(makeAxis(new THREE.Vector3(0, 0, 1), 0x2255ff)); // Z — blue
       scene.add(axesHelper);
     }
-    // DEBUG CUBE — centred at origin, visible in both 2D and 3D
-    const debugCube = new THREE.Mesh(
-      new THREE.BoxGeometry(20, 20, 20),
-      new THREE.MeshNormalMaterial()
-    );
-    scene.add(debugCube);
-
     updateSceneHelpers(100); // default until site loads
 
     /* ============================================================
@@ -441,12 +447,6 @@
       pan2D.x = center.x;
       pan2D.z = center.z;
       zoom2D  = 1;
-
-      console.log('fit2DCamera: aspect=', aspect.toFixed(3),
-        'siteW=', siteW.toFixed(1), 'siteH=', siteH.toFixed(1),
-        'halfH=', halfH.toFixed(1),
-        'centre=(', center.x.toFixed(1), ',', center.z.toFixed(1), ')',
-        'canvas=', container.clientWidth, 'x', container.clientHeight);
 
       update2DCamera();
     }
