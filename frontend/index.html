@@ -671,35 +671,180 @@
       return acc.normalize();
     }
 
+    // ── Coplanar polygon reconstruction ────────────────────────────
+    // Extracts all triangles from the entire model group in world space,
+    // groups them by plane (normal + distance), then by adjacency within
+    // each plane group. Each connected coplanar patch becomes one surface.
+    //
+    // Plane key: quantise normal (2dp) + plane distance d = dot(pt, normal) (2dp)
+    // Adjacency: two triangles are adjacent if they share a world-space edge
+    //            (vertex coordinates rounded to SNAP_MM precision)
+
+    const PLANE_NORMAL_DP = 2;   // decimal places for normal quantisation
+    const PLANE_DIST_DP   = 2;   // decimal places for plane-distance quantisation
+    const SNAP            = 1e-3; // 1mm vertex snap tolerance for edge matching
+
+    function vKey(v) {
+      // Round to nearest SNAP to handle floating point noise from matrix transforms
+      const s = 1 / SNAP;
+      return `${Math.round(v.x * s)},${Math.round(v.y * s)},${Math.round(v.z * s)}`;
+    }
+
+    function extractAllTriangles(modelGroup) {
+      // Returns array of { normal:Vector3, d:number, va:Vector3, vb:Vector3, vc:Vector3 }
+      // all in world space, normals pointing outward (y >= 0 preferred)
+      const tris = [];
+      const pA = new THREE.Vector3(), pB = new THREE.Vector3(), pC = new THREE.Vector3();
+      const e1  = new THREE.Vector3(), e2  = new THREE.Vector3();
+
+      modelGroup.traverse(child => {
+        if (!child.isMesh) return;
+        child.updateMatrixWorld(true);
+        const pos = child.geometry.attributes.position;
+        const idx = child.geometry.index;
+        if (!pos) return;
+
+        const triCount = idx ? idx.count / 3 : pos.count / 3;
+        for (let i = 0; i < triCount; i++) {
+          let iA, iB, iC;
+          if (idx) { iA = idx.getX(i*3); iB = idx.getX(i*3+1); iC = idx.getX(i*3+2); }
+          else     { iA = i*3;           iB = i*3+1;             iC = i*3+2; }
+
+          pA.fromBufferAttribute(pos, iA).applyMatrix4(child.matrixWorld);
+          pB.fromBufferAttribute(pos, iB).applyMatrix4(child.matrixWorld);
+          pC.fromBufferAttribute(pos, iC).applyMatrix4(child.matrixWorld);
+
+          e1.subVectors(pB, pA); e2.subVectors(pC, pA);
+          const cr = new THREE.Vector3().crossVectors(e1, e2);
+          if (cr.length() < 1e-12) continue; // degenerate
+
+          const n = cr.clone().normalize();
+          // Prefer normals pointing upward (y > 0) for consistent keying
+          if (n.y < -0.1) n.negate();
+
+          // Skip undersides
+          if (n.y < -0.5) continue;
+
+          const d = n.dot(pA); // plane equation: n·x = d
+
+          tris.push({
+            normal: n,
+            d,
+            va: pA.clone(), vb: pB.clone(), vc: pC.clone(),
+          });
+        }
+      });
+      return tris;
+    }
+
+    function buildCoplanarPatches(tris) {
+      // ─ 1. Bucket triangles by plane key ────────────────────────────
+      const planeBuckets = new Map();
+      for (const t of tris) {
+        const nx = t.normal.x.toFixed(PLANE_NORMAL_DP);
+        const ny = t.normal.y.toFixed(PLANE_NORMAL_DP);
+        const nz = t.normal.z.toFixed(PLANE_NORMAL_DP);
+        const d  = t.d.toFixed(PLANE_DIST_DP);
+        const key = `${nx},${ny},${nz},${d}`;
+        if (!planeBuckets.has(key)) planeBuckets.set(key, { normal: t.normal.clone(), d: t.d, tris: [] });
+        planeBuckets.get(key).tris.push(t);
+      }
+
+      // ─ 2. Within each plane bucket, find connected components ───────
+      //      by shared edges (vertex key pairs)
+      const patches = [];
+
+      for (const { normal, d, tris: planeTris } of planeBuckets.values()) {
+        // Build edge → triangle index map
+        const edgeToTris = new Map();
+        for (let i = 0; i < planeTris.length; i++) {
+          const t = planeTris[i];
+          for (const [va, vb] of [[t.va,t.vb],[t.vb,t.vc],[t.vc,t.va]]) {
+            const ka = vKey(va), kb = vKey(vb);
+            const ek = ka < kb ? `${ka}|${kb}` : `${kb}|${ka}`;
+            if (!edgeToTris.has(ek)) edgeToTris.set(ek, []);
+            edgeToTris.get(ek).push(i);
+          }
+        }
+
+        // BFS flood-fill to find connected components
+        const visited = new Uint8Array(planeTris.length);
+        for (let start = 0; start < planeTris.length; start++) {
+          if (visited[start]) continue;
+          const group = [];
+          const queue = [start];
+          visited[start] = 1;
+          while (queue.length) {
+            const cur = queue.shift();
+            group.push(planeTris[cur]);
+            const t = planeTris[cur];
+            for (const [va, vb] of [[t.va,t.vb],[t.vb,t.vc],[t.vc,t.va]]) {
+              const ka = vKey(va), kb = vKey(vb);
+              const ek = ka < kb ? `${ka}|${kb}` : `${kb}|${ka}`;
+              for (const nb of (edgeToTris.get(ek) || [])) {
+                if (!visited[nb]) { visited[nb] = 1; queue.push(nb); }
+              }
+            }
+          }
+          patches.push({ normal: normal.clone(), d, tris: group });
+        }
+      }
+      return patches;
+    }
+
+    function patchArea(tris) {
+      let area = 0;
+      const e1 = new THREE.Vector3(), e2 = new THREE.Vector3(), cr = new THREE.Vector3();
+      for (const t of tris) {
+        e1.subVectors(t.vb, t.va); e2.subVectors(t.vc, t.va);
+        cr.crossVectors(e1, e2);
+        area += cr.length() * 0.5;
+      }
+      return area;
+    }
+
     function detectSurfaces(modelGroup) {
       surfaces = [];
       let idCounter = 0;
 
-      // ─ Step 1: detect raw surfaces per mesh ─────────────────────────
-      const rawSurfaces = [];
+      // ─ Step 1: extract all triangles in world space ─────────────────
+      const allTris = extractAllTriangles(modelGroup);
 
+      // ─ Step 2: group into coplanar connected patches ─────────────────
+      const patches = buildCoplanarPatches(allTris);
+
+      // ─ Step 3: classify each patch and build surface registry ────────
+      // We need to associate patches back to the original meshes for
+      // raycasting. Build a vertex → mesh map for this.
+      const vertexMeshMap = new Map();
       modelGroup.traverse(child => {
         if (!child.isMesh) return;
-        const posAttr = child.geometry.attributes.position;
-        if (!posAttr || posAttr.count < 3) return;
-        child.updateMatrixWorld(true);
+        const pos = child.geometry.attributes.position;
+        const idx = child.geometry.index;
+        if (!pos) return;
+        const total = idx ? idx.count : pos.count;
+        const p = new THREE.Vector3();
+        for (let i = 0; i < total; i++) {
+          const vi = idx ? idx.getX(i) : i;
+          p.fromBufferAttribute(pos, vi).applyMatrix4(child.matrixWorld);
+          vertexMeshMap.set(vKey(p), child);
+        }
+      });
 
-        // Area-weighted dominant normal (handles triangulated quads correctly)
-        const worldNormal = computeDominantNormal(child);
-        if (worldNormal.y < -0.1) worldNormal.negate();
+      for (const patch of patches) {
+        const area = patchArea(patch.tris);
+        if (area < 0.01) continue; // skip tiny / degenerate
 
-        const classification = classifyNormal(worldNormal);
-        if (classification === 'underside') return;
+        const normal = patch.normal;
+        const classification = classifyNormal(normal);
+        if (classification === 'underside') continue;
 
-        // True mesh area via cross product — correct for any polygon shape
-        const area = computeMeshArea(child);
-        if (area < 0.01) return; // skip degenerate / tiny faces
-
-        child.geometry.computeBoundingBox();
-        const box = new THREE.Box3()
-          .copy(child.geometry.boundingBox)
-          .applyMatrix4(child.matrixWorld);
-        const elevation = box.min.y;
+        // Elevation = minimum Y across all triangle vertices
+        let minY = Infinity;
+        for (const t of patch.tris) {
+          minY = Math.min(minY, t.va.y, t.vb.y, t.vc.y);
+        }
+        const elevation = Math.round(minY * 100) / 100;
 
         let type;
         if (classification === 'horizontal') {
@@ -711,106 +856,50 @@
         }
 
         const normalAngle = Math.round(
-          THREE.MathUtils.radToDeg(Math.acos(Math.min(1, Math.abs(worldNormal.y))))
+          THREE.MathUtils.radToDeg(Math.acos(Math.min(1, Math.abs(normal.y))))
         );
 
-        rawSurfaces.push({
-          mesh:        child,
-          type,
-          area,
-          elevation:   Math.round(elevation * 100) / 100,
-          normalAngle,
-          worldNormal: worldNormal.clone(),
-          box,
-        });
-      });
-
-      // ─ Step 2: merge coplanar adjacent triangles into logical surfaces ──
-      // Two meshes are merged if:
-      //   - same type
-      //   - normals agree within 15°
-      //   - elevation centroids within 0.5m (for horizontal) or same Y band (walls)
-      const NORMAL_DOT_THRESHOLD = Math.cos(THREE.MathUtils.degToRad(15));
-      const ELEV_TOLERANCE_H     = 0.5;  // metres — horizontal surfaces
-      const ELEV_TOLERANCE_W     = 0.5;  // metres — wall base elevation
-
-      const merged  = [];
-      const visited = new Array(rawSurfaces.length).fill(false);
-
-      for (let i = 0; i < rawSurfaces.length; i++) {
-        if (visited[i]) continue;
-        const base = rawSurfaces[i];
-        const group = [base];
-        visited[i] = true;
-
-        for (let j = i + 1; j < rawSurfaces.length; j++) {
-          if (visited[j]) continue;
-          const cand = rawSurfaces[j];
-          if (cand.type !== base.type) continue;
-
-          const dot = base.worldNormal.dot(cand.worldNormal);
-          if (dot < NORMAL_DOT_THRESHOLD) continue;
-
-          const elevDiff = Math.abs(base.elevation - cand.elevation);
-          const elevTol  = (base.type === 'wall' || base.type === 'sloped')
-            ? ELEV_TOLERANCE_W
-            : ELEV_TOLERANCE_H;
-          if (elevDiff > elevTol) continue;
-
-          group.push(cand);
-          visited[j] = true;
+        // Find the primary mesh (the one that owns most of this patch's vertices)
+        const meshCount = new Map();
+        for (const t of patch.tris) {
+          for (const v of [t.va, t.vb, t.vc]) {
+            const m = vertexMeshMap.get(vKey(v));
+            if (m) meshCount.set(m, (meshCount.get(m) || 0) + 1);
+          }
         }
+        let primaryMesh = null, maxCount = 0;
+        for (const [m, c] of meshCount) {
+          if (c > maxCount) { maxCount = c; primaryMesh = m; }
+        }
+        if (!primaryMesh) continue;
 
-        // Aggregate group into one logical surface
-        const totalArea = group.reduce((s, r) => s + r.area, 0);
-        const minElev   = Math.min(...group.map(r => r.elevation));
-        // Area-weighted average normal
-        const avgNormal = new THREE.Vector3();
-        group.forEach(r => avgNormal.addScaledVector(r.worldNormal, r.area));
-        avgNormal.normalize();
-        const avgNormalAngle = Math.round(
-          THREE.MathUtils.radToDeg(Math.acos(Math.min(1, Math.abs(avgNormal.y))))
-        );
+        // Collect all unique meshes that contribute to this patch
+        const meshSet = new Set([...meshCount.keys()]);
+        const meshes  = [...meshSet];
 
-        merged.push({
-          meshes:      group.map(r => r.mesh),
-          primaryMesh: group[0].mesh,  // representative mesh for raycasting
-          type:        base.type,
-          area:        Math.round(totalArea * 10) / 10,
-          elevation:   Math.round(minElev * 100) / 100,
-          normalAngle: avgNormalAngle,
-          worldNormal: avgNormal,
-        });
-      }
-
-      // ─ Step 3: build final surface registry ───────────────────────────
-      merged.forEach(m => {
-        const mat = MAT[m.type] ? MAT[m.type].clone() : MAT.model.clone();
-        mat.polygonOffset      = true;
-        mat.polygonOffsetFactor = 1;
-        mat.polygonOffsetUnits  = 1;
-
-        // Apply material to all meshes in the group
-        m.meshes.forEach(mesh => {
-          mesh.material = mat.clone();
-          mesh.material.polygonOffset = true;
-          mesh.material.polygonOffsetFactor = 1;
-          mesh.material.polygonOffsetUnits  = 1;
+        // Apply surface material to all contributing meshes
+        const mat = MAT[type] ? MAT[type].clone() : MAT.model.clone();
+        mat.polygonOffset = true; mat.polygonOffsetFactor = 1; mat.polygonOffsetUnits = 1;
+        meshes.forEach(m => {
+          m.material = mat.clone();
+          m.material.polygonOffset = true;
+          m.material.polygonOffsetFactor = 1;
+          m.material.polygonOffsetUnits  = 1;
         });
 
         surfaces.push({
           id:               idCounter++,
-          mesh:             m.primaryMesh,  // used for raycasting
-          meshes:           m.meshes,       // all meshes in group
-          type:             m.type,
-          area:             m.area,
-          elevation:        m.elevation,
-          normalAngle:      m.normalAngle,
-          worldNormal:      m.worldNormal,
-          originalMaterial: m.primaryMesh.material,
+          mesh:             primaryMesh,
+          meshes,
+          type,
+          area:             Math.round(area * 10) / 10,
+          elevation,
+          normalAngle,
+          worldNormal:      normal.clone(),
+          originalMaterial: primaryMesh.material,
           plants:           [],
         });
-      });
+      }
 
       return surfaces;
     }
