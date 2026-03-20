@@ -201,6 +201,7 @@
           <span class="info-label">Format</span>
           <span class="info-value" id="model-format">&#8212;</span>
         </div>
+        <div id="model-unit-note" style="display:none;font-size:10px;color:#e8a040;padding:2px 0 4px;font-style:italic"></div>
         <div class="info-row">
           <span class="info-label">Surfaces found</span>
           <span class="info-value" id="model-surface-count">&#8212;</span>
@@ -255,6 +256,14 @@
           <span class="info-label">Normal angle</span>
           <span class="info-value" id="surf-normal">&#8212;</span>
         </div>
+        <div class="info-row" id="surf-substrate-row" style="display:none">
+          <span class="info-label" title="Substrate or soil depth constrains root volume and maximum plant size">Substrate depth</span>
+          <span style="display:flex;align-items:center;gap:4px">
+            <input type="number" id="surf-substrate" class="gpr-input" min="50" max="3000" step="50" placeholder="mm" style="width:60px">
+            <span style="font-size:11px;color:var(--text-secondary)">mm</span>
+          </span>
+        </div>
+        <div id="surf-substrate-cap" style="display:none;font-size:10px;color:var(--accent-light);padding:2px 0 4px;font-style:italic"></div>
       </div>
 
       <!-- Plant schedule for selected surface -->

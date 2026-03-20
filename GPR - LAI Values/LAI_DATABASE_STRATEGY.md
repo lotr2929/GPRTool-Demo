@@ -31,6 +31,143 @@ All existing LAI databases were compiled for ecological and forestry research. V
 
 ---
 
+## LAI Variability by Context — The Fundamental Challenge
+
+### Why LAI values vary so widely
+
+LAI is not a fixed property of a species. It is a dynamic response to growing conditions. The same species measured in different contexts can yield LAI values that differ by a factor of 2–10. This is not measurement error — it is ecophysiological reality.
+
+The Singapore field data (Boon & Tan 2009) makes this starkly visible. Comparing Singapore urban field measurements against TRY database values (open/natural context):
+
+| Species | TRY mean | Singapore field | Ratio | Notes |
+|---------|----------|-----------------|-------|-------|
+| *Acer spicatum* | 1.34 | 6.91 | 5.2× | TRY measured in shade; Singapore in open tropical urban |
+| *Cirsium arvense* | 4.76 | 6.62 | 1.4× | Similar context |
+| *Deschampsia cespitosa* | 3.08 | 4.52 | 1.5× | Singapore warmer climate drives higher LAI |
+| *Cornus stolonifera* | 0.05 | 0.23 | 4.6× | TRY has many drought/dormancy measurements dragging mean |
+| *Caryocar brasiliense* | 1.48 | 2.36 | 1.6× | Savanna vs urban tropical |
+
+The extreme cases (*Acer spicatum* 5×, *Cornus stolonifera* 4.6×) illustrate that using the wrong source value can produce a GPR result that is off by nearly an order of magnitude for a single surface.
+
+### Primary context variables driving LAI variation
+
+**1. Climate zone**  
+Tropical humid climates sustain higher LAI year-round than temperate climates with seasonal deciduous loss. A temperate deciduous tree measured in winter vs a tropical evergreen are not comparable. TRY and ORNL databases aggregate across all seasons and climates — the mean hides this.
+
+| Climate zone | Typical LAI range | Notes |
+|---|---|---|
+| Tropical humid (year-round) | 3–10 | Continuous growing season; high LAI |
+| Subtropical (wet/dry) | 2–8 | Dry season reduction |
+| Temperate (seasonal) | 1–7 | Deciduous species: near 0 in winter |
+| Mediterranean (summer dry) | 1–5 | Drought-adapted; summer reduction |
+| Arid/semi-arid | 0.2–3 | Extreme reduction; succulents low |
+
+**2. Urban vs rural vs natural context**  
+Urban environments impose multiple simultaneous constraints. The net effect is highly species- and installation-specific:
+
+| Factor | Effect on LAI | Direction |
+|---|---|---|
+| Root restriction (pit, planter) | Reduced canopy size | ↓ LAI |
+| Substrate depth < 400mm | Reduced root volume, stress | ↓ LAI |
+| Elevated CO₂ (urban air) | Slight photosynthetic increase | ↑ LAI |
+| Urban heat island | Extended growing season | ↑ LAI (temperate) |
+| Light reduction (overshadowing) | Reduced photosynthesis | ↓ LAI |
+| Irrigation supplementation | Reduced drought stress | ↑ LAI |
+| Pollution / compaction | Stress response | ↓ LAI |
+| Regular pruning | Reduced canopy density | ↓ LAI |
+
+Net effect: urban LAI is typically 30–60% lower than open-ground LAI for the same species under the same climate. Some species show the opposite (street trees in warm irrigated climates can perform similarly to natural growth).
+
+**3. Installation type**  
+This is the most actionable variable for a planning tool because it is specified by the designer:
+
+| Installation type | Substrate / root volume | Typical LAI adjustment | Confidence |
+|---|---|---|---|
+| Ground planting, deep soil (>1m) | Unlimited | 0.85–1.0 × open-ground | Medium |
+| Ground planting, raised bed (600mm–1m) | Moderate | 0.70–0.90 | Low |
+| Podium garden (400–600mm substrate) | Restricted | 0.55–0.75 | Low |
+| Extensive green roof (<150mm) | Highly restricted | 0.30–0.55 | Low |
+| Intensive green roof (150–400mm) | Restricted | 0.45–0.70 | Low |
+| Street tree pit (standard) | Very restricted | 0.40–0.65 | Low |
+| Street tree pit (structural soil) | Moderate | 0.60–0.80 | Low |
+| Vertical greenery, soil-based | Wall-mounted, limited | 0.55–0.80 | Very low |
+| Vertical greenery, hydroponic | No substrate limit | 0.70–0.90 | Very low |
+| Atrium planting | Reduced light | 0.40–0.70 | Very low |
+
+*Confidence reflects availability of measured data, not theoretical understanding.*
+
+**4. Light availability**  
+LAI is directly regulated by light. Shade-adapted species develop high LAI at low light; sun-adapted species may have low LAI but high photosynthetic efficiency per unit area. This matters for:
+- North-facing walls (southern hemisphere) — significantly lower light
+- Atrium and podium gardens with overshadowing
+- Street tree pits under building canopies
+- Understorey planting in multi-layered schemes
+
+**5. Measurement methodology**  
+Different measurement methods produce systematically different LAI values:
+
+| Method | Typical bias | Notes |
+|---|---|---|
+| Destructive harvest (gold standard) | None | Labour-intensive; not practical at scale |
+| LAI-2000 / Plant Canopy Analyser | Slight underestimate | Most common; Boon & Tan 2009 method |
+| Hemispherical photography | Underestimate 10–30% | Clumping correction required |
+| Litter traps | Seasonal; one-sided area | Standard for forests |
+| MODIS/remote sensing | Landscape-scale; urban artefacts | Not species-level |
+
+The TRY database aggregates across all methods without systematic correction. This adds methodological noise to the already large contextual variance.
+
+### What this means for GPRTool
+
+**Immediate position (MVP):**
+- Use best-available LAI value from the highest-confidence source (Singapore field > ORNL/TRY)
+- Display source provenance for every value in the UI
+- Flag ORNL/TRY values with a caution note: *"Measured in open/natural conditions. Urban LAI may be lower. Urban calibration pending."*
+- Do not fabricate urban adjustment factors without measured data to support them
+
+**Near-term database work:**
+- Add `context_notes` field to the database recording known variation (e.g. *"TRY mean includes shade-grown values; Singapore field measured in open tropical urban"*)
+- Add `measurement_method` field where known
+- Add `climate_zone_of_measurement` field
+- Record `min_lai` and `max_lai` from TRY — the range is as informative as the mean
+
+**Long-term research programme (substantial funding required):**
+This is a research programme, not a development task. It requires:
+- Systematic field LAI measurement campaigns across climate zones (Perth, Singapore, Hong Kong, a temperate European city)
+- Controlled experiments varying substrate depth, light level, and installation type
+- A peer-reviewed publication establishing the urban LAI adjustment framework
+- Funding order of magnitude: AUD 500K–2M for a rigorous multi-city programme
+
+Until that data exists, GPRTool's LAI values carry an honest uncertainty that must be communicated to users — not hidden. The Singapore field data is the only directly urban-measured source we currently have. It covers 35 species. Everything else is an informed estimate.
+
+### Database notation standard
+
+Every LAI entry in the database should carry sufficient metadata for a user or reviewer to assess its fitness for a given application. The minimum required fields are:
+
+| Field | Purpose |
+|---|---|
+| `mean_lai` | Best-estimate value for calculation |
+| `min_lai` / `max_lai` | Known range — communicates uncertainty |
+| `measurement_count` | Sample size — low n = low confidence |
+| `sources` | Primary source(s) |
+| `urban_context` | Boolean — was this measured in an urban setting? |
+| `singapore_field_lai` | Singapore urban field value if available (Boon & Tan 2009) |
+| `context_notes` | Free text — known sources of variation, climate of measurement, method |
+| `confidence_tier` | 1 = urban field measured; 2 = open-ground measured; 3 = literature estimate |
+
+**Confidence tier definition:**
+- **Tier 1** — directly measured in urban conditions (Singapore field data; future urban campaigns)
+- **Tier 2** — measured in open/natural conditions; reasonable proxy with disclosed uncertainty
+- **Tier 3** — estimated from literature, manufacturer data, or expert judgement; use with caution
+
+Currently in GPRTool's database:
+- Tier 1: 35 species (Singapore field, Boon & Tan 2009)
+- Tier 2: ~725 species (ORNL/TRY)
+- Tier 3: 0 (not yet added)
+
+The free-tier `plants_free.json` already implements provenance badges (Field / ORNL / Lit) as a user-facing representation of this tier system.
+
+---
+
 ## Current Processed Data (as of 2026-03-17)
 
 | File | Contents |

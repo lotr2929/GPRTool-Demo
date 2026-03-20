@@ -602,50 +602,103 @@
       return 'sloped';
     }
 
+    // ── True mesh area: sum of all triangle areas via cross product ──
+    function computeMeshArea(mesh) {
+      const geo    = mesh.geometry;
+      const posAttr = geo.attributes.position;
+      const idxAttr = geo.index;
+      const mat    = mesh.matrixWorld;
+      const pA = new THREE.Vector3();
+      const pB = new THREE.Vector3();
+      const pC = new THREE.Vector3();
+      const e1 = new THREE.Vector3();
+      const e2 = new THREE.Vector3();
+      const cr = new THREE.Vector3();
+      let area = 0;
+      const triCount = idxAttr ? idxAttr.count / 3 : posAttr.count / 3;
+      for (let i = 0; i < triCount; i++) {
+        let iA, iB, iC;
+        if (idxAttr) {
+          iA = idxAttr.getX(i * 3);
+          iB = idxAttr.getX(i * 3 + 1);
+          iC = idxAttr.getX(i * 3 + 2);
+        } else {
+          iA = i * 3; iB = i * 3 + 1; iC = i * 3 + 2;
+        }
+        pA.fromBufferAttribute(posAttr, iA).applyMatrix4(mat);
+        pB.fromBufferAttribute(posAttr, iB).applyMatrix4(mat);
+        pC.fromBufferAttribute(posAttr, iC).applyMatrix4(mat);
+        e1.subVectors(pB, pA);
+        e2.subVectors(pC, pA);
+        cr.crossVectors(e1, e2);
+        area += cr.length() * 0.5;
+      }
+      return area;
+    }
+
+    // ── Dominant normal from all triangles (area-weighted average) ──
+    function computeDominantNormal(mesh) {
+      const geo     = mesh.geometry;
+      const posAttr = geo.attributes.position;
+      const idxAttr = geo.index;
+      const mat     = mesh.matrixWorld;
+      const pA = new THREE.Vector3();
+      const pB = new THREE.Vector3();
+      const pC = new THREE.Vector3();
+      const e1 = new THREE.Vector3();
+      const e2 = new THREE.Vector3();
+      const cr = new THREE.Vector3();
+      const acc = new THREE.Vector3();
+      const triCount = idxAttr ? idxAttr.count / 3 : posAttr.count / 3;
+      for (let i = 0; i < triCount; i++) {
+        let iA, iB, iC;
+        if (idxAttr) {
+          iA = idxAttr.getX(i * 3);
+          iB = idxAttr.getX(i * 3 + 1);
+          iC = idxAttr.getX(i * 3 + 2);
+        } else {
+          iA = i * 3; iB = i * 3 + 1; iC = i * 3 + 2;
+        }
+        pA.fromBufferAttribute(posAttr, iA).applyMatrix4(mat);
+        pB.fromBufferAttribute(posAttr, iB).applyMatrix4(mat);
+        pC.fromBufferAttribute(posAttr, iC).applyMatrix4(mat);
+        e1.subVectors(pB, pA);
+        e2.subVectors(pC, pA);
+        cr.crossVectors(e1, e2); // length = 2 × area = natural weight
+        acc.add(cr);
+      }
+      if (acc.length() < 1e-10) return new THREE.Vector3(0, 1, 0);
+      return acc.normalize();
+    }
+
     function detectSurfaces(modelGroup) {
       surfaces = [];
       let idCounter = 0;
 
+      // ─ Step 1: detect raw surfaces per mesh ─────────────────────────
+      const rawSurfaces = [];
+
       modelGroup.traverse(child => {
         if (!child.isMesh) return;
-
         const posAttr = child.geometry.attributes.position;
         if (!posAttr || posAttr.count < 3) return;
-
         child.updateMatrixWorld(true);
 
-        const idxAttr = child.geometry.index;
-        let iA = 0, iB = 1, iC = 2;
-        if (idxAttr) { iA = idxAttr.getX(0); iB = idxAttr.getX(1); iC = idxAttr.getX(2); }
-
-        const pA = new THREE.Vector3().fromBufferAttribute(posAttr, iA);
-        const pB = new THREE.Vector3().fromBufferAttribute(posAttr, iB);
-        const pC = new THREE.Vector3().fromBufferAttribute(posAttr, iC);
-
-        const edge1 = new THREE.Vector3().subVectors(pB, pA);
-        const edge2 = new THREE.Vector3().subVectors(pC, pA);
-        const localNormal = new THREE.Vector3().crossVectors(edge1, edge2).normalize();
-
-        const worldNormal = localNormal.clone().transformDirection(child.matrixWorld).normalize();
-
+        // Area-weighted dominant normal (handles triangulated quads correctly)
+        const worldNormal = computeDominantNormal(child);
         if (worldNormal.y < -0.1) worldNormal.negate();
 
         const classification = classifyNormal(worldNormal);
         if (classification === 'underside') return;
 
+        // True mesh area via cross product — correct for any polygon shape
+        const area = computeMeshArea(child);
+        if (area < 0.01) return; // skip degenerate / tiny faces
+
         child.geometry.computeBoundingBox();
-        const box = new THREE.Box3().copy(child.geometry.boundingBox).applyMatrix4(child.matrixWorld);
-        const size = new THREE.Vector3();
-        box.getSize(size);
-
-        let area;
-        if (classification === 'horizontal') {
-          area = size.x * size.z;
-        } else {
-          const dims = [size.x, size.y, size.z].sort((a, b) => b - a);
-          area = dims[0] * dims[1];
-        }
-
+        const box = new THREE.Box3()
+          .copy(child.geometry.boundingBox)
+          .applyMatrix4(child.matrixWorld);
         const elevation = box.min.y;
 
         let type;
@@ -657,23 +710,106 @@
           type = 'sloped';
         }
 
-        const normalAngle = Math.round(THREE.MathUtils.radToDeg(Math.acos(Math.min(1, Math.abs(worldNormal.y)))));
+        const normalAngle = Math.round(
+          THREE.MathUtils.radToDeg(Math.acos(Math.min(1, Math.abs(worldNormal.y))))
+        );
+
+        rawSurfaces.push({
+          mesh:        child,
+          type,
+          area,
+          elevation:   Math.round(elevation * 100) / 100,
+          normalAngle,
+          worldNormal: worldNormal.clone(),
+          box,
+        });
+      });
+
+      // ─ Step 2: merge coplanar adjacent triangles into logical surfaces ──
+      // Two meshes are merged if:
+      //   - same type
+      //   - normals agree within 15°
+      //   - elevation centroids within 0.5m (for horizontal) or same Y band (walls)
+      const NORMAL_DOT_THRESHOLD = Math.cos(THREE.MathUtils.degToRad(15));
+      const ELEV_TOLERANCE_H     = 0.5;  // metres — horizontal surfaces
+      const ELEV_TOLERANCE_W     = 0.5;  // metres — wall base elevation
+
+      const merged  = [];
+      const visited = new Array(rawSurfaces.length).fill(false);
+
+      for (let i = 0; i < rawSurfaces.length; i++) {
+        if (visited[i]) continue;
+        const base = rawSurfaces[i];
+        const group = [base];
+        visited[i] = true;
+
+        for (let j = i + 1; j < rawSurfaces.length; j++) {
+          if (visited[j]) continue;
+          const cand = rawSurfaces[j];
+          if (cand.type !== base.type) continue;
+
+          const dot = base.worldNormal.dot(cand.worldNormal);
+          if (dot < NORMAL_DOT_THRESHOLD) continue;
+
+          const elevDiff = Math.abs(base.elevation - cand.elevation);
+          const elevTol  = (base.type === 'wall' || base.type === 'sloped')
+            ? ELEV_TOLERANCE_W
+            : ELEV_TOLERANCE_H;
+          if (elevDiff > elevTol) continue;
+
+          group.push(cand);
+          visited[j] = true;
+        }
+
+        // Aggregate group into one logical surface
+        const totalArea = group.reduce((s, r) => s + r.area, 0);
+        const minElev   = Math.min(...group.map(r => r.elevation));
+        // Area-weighted average normal
+        const avgNormal = new THREE.Vector3();
+        group.forEach(r => avgNormal.addScaledVector(r.worldNormal, r.area));
+        avgNormal.normalize();
+        const avgNormalAngle = Math.round(
+          THREE.MathUtils.radToDeg(Math.acos(Math.min(1, Math.abs(avgNormal.y))))
+        );
+
+        merged.push({
+          meshes:      group.map(r => r.mesh),
+          primaryMesh: group[0].mesh,  // representative mesh for raycasting
+          type:        base.type,
+          area:        Math.round(totalArea * 10) / 10,
+          elevation:   Math.round(minElev * 100) / 100,
+          normalAngle: avgNormalAngle,
+          worldNormal: avgNormal,
+        });
+      }
+
+      // ─ Step 3: build final surface registry ───────────────────────────
+      merged.forEach(m => {
+        const mat = MAT[m.type] ? MAT[m.type].clone() : MAT.model.clone();
+        mat.polygonOffset      = true;
+        mat.polygonOffsetFactor = 1;
+        mat.polygonOffsetUnits  = 1;
+
+        // Apply material to all meshes in the group
+        m.meshes.forEach(mesh => {
+          mesh.material = mat.clone();
+          mesh.material.polygonOffset = true;
+          mesh.material.polygonOffsetFactor = 1;
+          mesh.material.polygonOffsetUnits  = 1;
+        });
 
         surfaces.push({
           id:               idCounter++,
-          mesh:             child,
-          type,
-          area:             Math.round(area * 10) / 10,
-          elevation:        Math.round(elevation * 100) / 100,
-          normalAngle,
-          worldNormal:      worldNormal.clone(),
-          originalMaterial: child.material,
+          mesh:             m.primaryMesh,  // used for raycasting
+          meshes:           m.meshes,       // all meshes in group
+          type:             m.type,
+          area:             m.area,
+          elevation:        m.elevation,
+          normalAngle:      m.normalAngle,
+          worldNormal:      m.worldNormal,
+          originalMaterial: m.primaryMesh.material,
+          plants:           [],
         });
-
-        child.material = MAT[type] ? MAT[type].clone() : MAT.model.clone();
-        child.material.polygonOffset      = true;
-        child.material.polygonOffsetFactor = 1;
-        child.material.polygonOffsetUnits  = 1;
       });
 
       return surfaces;
@@ -737,15 +873,20 @@
       return m;
     }
 
+    function applyMatToSurface(s, mat) {
+      const meshes = s.meshes || [s.mesh];
+      meshes.forEach(mesh => { mesh.material = mat.clone(); });
+    }
+
     function hoverSurface(s) {
       if (s === selectedSurface) return;
       if (hoveredSurface && hoveredSurface !== selectedSurface) {
-        hoveredSurface.mesh.material = typeMat(hoveredSurface);
+        applyMatToSurface(hoveredSurface, typeMat(hoveredSurface));
       }
       hoveredSurface = s;
       const hm = MAT.hover.clone();
       hm.polygonOffset = true; hm.polygonOffsetFactor = -2; hm.polygonOffsetUnits = -2;
-      s.mesh.material = hm;
+      applyMatToSurface(s, hm);
       document.querySelectorAll('.surface-item').forEach(el => {
         el.classList.toggle('hovered', parseInt(el.dataset.surfaceId) === s.id);
       });
@@ -753,7 +894,7 @@
 
     function unhoverSurface(s) {
       if (s === selectedSurface) return;
-      s.mesh.material = typeMat(s);
+      applyMatToSurface(s, typeMat(s));
       hoveredSurface = null;
       document.querySelectorAll('.surface-item').forEach(el => el.classList.remove('hovered'));
     }
@@ -766,7 +907,7 @@
       selectedSurface = s;
       const sm = MAT.selected.clone();
       sm.polygonOffset = true; sm.polygonOffsetFactor = -2; sm.polygonOffsetUnits = -2;
-      s.mesh.material = sm;
+      applyMatToSurface(s, sm);
 
       document.querySelectorAll('.surface-item').forEach(el => {
         el.classList.toggle('selected', parseInt(el.dataset.surfaceId) === s.id);
@@ -778,6 +919,17 @@
       document.getElementById('surf-area').textContent      = s.area + ' m\u00b2';
       document.getElementById('surf-elevation').textContent = s.elevation + ' m';
       document.getElementById('surf-normal').textContent    = s.normalAngle + '\u00b0 from vertical';
+
+      // Show substrate depth input for non-ground surfaces
+      const subRow = document.getElementById('surf-substrate-row');
+      const subEl  = document.getElementById('surf-substrate');
+      const capEl  = document.getElementById('surf-substrate-cap');
+      if (subRow && subEl) {
+        const showSub = (s.type === 'roof' || s.type === 'sloped' || s.type === 'wall');
+        subRow.style.display = showSub ? '' : 'none';
+        subEl.value = s.substrate_mm || '';
+        if (capEl) capEl.style.display = 'none';
+      }
 
       document.getElementById('gpr-section').style.display = 'block';
 
@@ -792,7 +944,7 @@
 
     function deselectSurface() {
       if (selectedSurface) {
-        selectedSurface.mesh.material = typeMat(selectedSurface);
+        applyMatToSurface(selectedSurface, typeMat(selectedSurface));
         selectedSurface = null;
       }
       document.querySelectorAll('.surface-item').forEach(el => el.classList.remove('selected'));
@@ -812,14 +964,23 @@
       pointerNDC.y = -((e.clientY - rect.top)  / rect.height) * 2 + 1;
     }
 
+    // Build flat list of all meshes mapped back to their surface
+    function allSurfaceMeshes() {
+      const map = new Map();
+      surfaces.forEach(s => {
+        (s.meshes || [s.mesh]).forEach(m => map.set(m, s));
+      });
+      return map;
+    }
+
     renderer.domElement.addEventListener('pointermove', e => {
       if (currentMode !== '3d' || !importedModel || pan2DActive) return;
       getPointerNDC(e);
       raycaster.setFromCamera(pointerNDC, camera3D);
-      const meshes = surfaces.map(s => s.mesh);
-      const hits   = raycaster.intersectObjects(meshes, false);
+      const meshMap = allSurfaceMeshes();
+      const hits    = raycaster.intersectObjects([...meshMap.keys()], false);
       if (hits.length) {
-        const hit = surfaces.find(s => s.mesh === hits[0].object);
+        const hit = meshMap.get(hits[0].object);
         if (hit && hit !== hoveredSurface && hit !== selectedSurface) hoverSurface(hit);
       } else {
         if (hoveredSurface && hoveredSurface !== selectedSurface) unhoverSurface(hoveredSurface);
@@ -827,13 +988,14 @@
     });
 
     renderer.domElement.addEventListener('click', e => {
+      if (placementMode && placementMode !== 'idle') return; // placement engine handles this
       if (currentMode !== '3d' || !importedModel) return;
       getPointerNDC(e);
       raycaster.setFromCamera(pointerNDC, camera3D);
-      const meshes = surfaces.map(s => s.mesh);
-      const hits   = raycaster.intersectObjects(meshes, false);
+      const meshMap = allSurfaceMeshes();
+      const hits    = raycaster.intersectObjects([...meshMap.keys()], false);
       if (hits.length) {
-        const hit = surfaces.find(s => s.mesh === hits[0].object);
+        const hit = meshMap.get(hits[0].object);
         if (hit) selectSurface(hit);
       } else {
         deselectSurface();
@@ -1018,6 +1180,45 @@
     }
 
     /* ============================================================
+       UNIT AUTO-DETECTION + SCALE
+       SketchUp's internal unit is inches. The SKP→GLB online
+       converter exports in those raw units. A building modelled
+       at "3000mm" in SketchUp arrives as 3000 scene units.
+       GPRTool treats scene units as metres, so we must rescale.
+
+       Detection heuristic (bounding box of raw model):
+         maxDim > 500  → assume mm  → scale × 0.001
+         maxDim > 50   → assume cm  → scale × 0.01
+         otherwise     → assume m   → no scale
+
+       A 10-storey building site in mm is ~100,000 units tall.
+       In metres it would be ~100 units. The 500-unit threshold
+       cleanly separates these two worlds.
+    ============================================================ */
+    function detectAndApplyUnitScale(group) {
+      const box  = new THREE.Box3().setFromObject(group);
+      const size = new THREE.Vector3();
+      box.getSize(size);
+      const maxDim = Math.max(size.x, size.y, size.z);
+
+      let scale  = 1.0;
+      let unit   = 'm';
+      if (maxDim > 500) {
+        scale = 0.001; unit = 'mm';
+      } else if (maxDim > 50) {
+        scale = 0.01;  unit = 'cm';
+      }
+
+      if (scale !== 1.0) {
+        group.scale.set(scale, scale, scale);
+        group.updateMatrixWorld(true);
+        console.log(`GPRTool: model detected as ${unit} (maxDim=${maxDim.toFixed(1)}), scaled ×${scale}`);
+      }
+
+      return { scale, unit, rawMaxDim: maxDim };
+    }
+
+    /* ============================================================
        ON MODEL LOADED
     ============================================================ */
     function onModelLoaded(group, filename, format) {
@@ -1029,6 +1230,9 @@
       }
 
       importedModel = group;
+
+      // Auto-detect and apply unit scale BEFORE centring
+      const { scale, unit } = detectAndApplyUnitScale(group);
 
       const box    = new THREE.Box3().setFromObject(group);
       const centre = new THREE.Vector3();
@@ -1062,7 +1266,19 @@
       document.getElementById('clearSiteBtn').style.display        = 'block';
       document.getElementById('left-panel').classList.add('site-imported');
 
-      showFeedback(`${format} model loaded \u2014 ${surfaces.length} surfaces detected`);
+      // Show unit conversion note if rescaled
+      const unitNote = document.getElementById('model-unit-note');
+      if (unitNote) {
+        if (unit !== 'm') {
+          unitNote.textContent = `\u26a0 Detected as ${unit} \u2014 scaled to metres automatically`;
+          unitNote.style.display = '';
+        } else {
+          unitNote.style.display = 'none';
+        }
+      }
+
+      showFeedback(`${format} model loaded \u2014 ${surfaces.length} surfaces detected`
+        + (unit !== 'm' ? ` (converted from ${unit})` : ''));
     }
 
     /* ============================================================
@@ -1624,8 +1840,9 @@
     fetch('./plants_free.json')
       .then(r => r.json())
       .then(db => {
-        plantDb = db.species || [];
-        console.log(`GPRTool: loaded ${plantDb.length} species`);
+        plantDb            = db.species || [];
+        _substrateCapTable = db.substrate_caps || null;
+        console.log(`GPRTool: loaded ${plantDb.length} species, ${_substrateCapTable?.length || 0} substrate caps`);
       })
       .catch(err => console.warn('Plant library not loaded:', err));
 
@@ -1867,12 +2084,23 @@
       const compatible = selectedPlant ? selectedPlant.surface_types.includes(surfType) : false;
 
       if (selectedPlant) {
+        // Check substrate compatibility
+        const subMm    = selectedSurface.substrate_mm;
+        const minSub   = selectedPlant.size?.min_substrate_mm;
+        const subWarn  = subMm && minSub && subMm < minSub
+          ? ` ⚠ Needs ≥${minSub}mm substrate (surface has ${subMm}mm)`
+          : '';
+        const limits   = radiusLimits(selectedPlant, selectedSurface);
+        const capWarn  = limits.capLabel && !subWarn ? ` — capped at ${limits.max}m radius` : '';
+
         statusEl.textContent = compatible
-          ? `Add ${selectedPlant.common} (LAI ${selectedPlant.lai}) to ${surfType} surface`
+          ? `Add ${selectedPlant.common} (LAI ${selectedPlant.lai}) to ${surfType}${subWarn || capWarn}`
           : `${selectedPlant.common} is not rated for ${surfType} surfaces`;
+        statusEl.style.color = subWarn ? '#e8a040' : '';
         if (assignBtn) assignBtn.disabled = !compatible;
       } else {
-        statusEl.textContent = `${surfType} surface \u2014 select a species above`;
+        statusEl.textContent = `${surfType} surface — select a species above`;
+        statusEl.style.color = '';
         if (assignBtn) assignBtn.disabled = true;
       }
     }
@@ -1912,13 +2140,8 @@
     document.getElementById('plant-search').addEventListener('input', renderPlantList);
     document.getElementById('plant-filter').addEventListener('change', renderPlantList);
 
-    document.getElementById('plant-assign-btn').addEventListener('click', () => {
-      if (selectedSurface && selectedPlant) {
-        // Default canopy area = full surface area; user edits in schedule
-        addPlantInstance(selectedSurface, selectedPlant, selectedSurface.area);
-        closePlantModal();
-      }
-    });
+    // plant-assign-btn is wired in the PLACEMENT ENGINE section below
+    // (starts placement flow instead of directly adding)
 
     // Escape closes modal (capture phase)
     document.addEventListener('keydown', e => {
@@ -1929,16 +2152,667 @@
     document.getElementById('plantLibraryBtn')?.addEventListener('click', openPlantModal);
     document.getElementById('addPlantBtn')?.addEventListener('click', openPlantModal);
 
+    document.getElementById('gpr-target')?.addEventListener('input', recalcGPR);
+
+    // ── Substrate depth input ─────────────────────────────────
+    document.getElementById('surf-substrate')?.addEventListener('change', e => {
+      if (!selectedSurface) return;
+      const v = parseInt(e.target.value);
+      selectedSurface.substrate_mm = (!v || isNaN(v)) ? null : v;
+
+      // Show cap label
+      const capEl = document.getElementById('surf-substrate-cap');
+      if (capEl) {
+        const label = substrateCapLabel(selectedSurface.substrate_mm);
+        if (label) {
+          capEl.textContent = label;
+          capEl.style.display = '';
+        } else {
+          capEl.style.display = 'none';
+        }
+      }
+
+      // Refresh modal if open (species compatibility may have changed)
+      if (plantModalOpen) renderPlantList();
+    });
+
+    /* ============================================================
+       PLANT PLACEMENT ENGINE
+       Handles 2D canvas placement of plant symbols:
+         circle  — trees, shrubs, bamboo (click centre, drag radius)
+         polygon — groundcover, turf, climbers, green roof
+       Also manages 3D proxy meshes for placed symbols.
+    ============================================================ */
+
+    // ── Placement type by category ─────────────────────────────
+    function placementTypeForCategory(cat) {
+      if (!cat) return 'circle';
+      const c = cat.toLowerCase();
+      if (c.includes('tree') || c.includes('shrub') || c.includes('bamboo') || c.includes('palm')) return 'circle';
+      return 'polygon';
+    }
+
+    // ── Substrate cap lookup ───────────────────────────────────
+    // Returns max canopy radius allowed for a given substrate depth (mm)
+    // Uses the substrate_caps table from plants_free.json
+    let _substrateCapTable = null;
+    function substrateCapRadius(depth_mm) {
+      if (!depth_mm || depth_mm <= 0) return Infinity;
+      const table = _substrateCapTable;
+      if (!table) return Infinity;
+      // Find first entry where depth_mm <= cap threshold
+      for (const cap of table) {
+        if (depth_mm <= cap.depth_mm) return cap.max_radius_m;
+      }
+      return Infinity;
+    }
+    function substrateCapLabel(depth_mm) {
+      if (!depth_mm || depth_mm <= 0) return null;
+      const table = _substrateCapTable;
+      if (!table) return null;
+      for (const cap of table) {
+        if (depth_mm <= cap.depth_mm) return cap.label;
+      }
+      return null;
+    }
+
+    // ── Radius limits: species data + substrate cap ────────────
+    // Returns { min, max, def } in metres
+    function radiusLimits(species, surface) {
+      // 1. Species size data (from JSON)
+      const sz = species?.size;
+      const spMin = sz?.canopy_radius_min_m  ?? 0.5;
+      const spMax = sz?.canopy_radius_max_m  ?? 15;
+      const spDef = sz?.canopy_radius_typical_m ?? 3;
+
+      // 2. Substrate cap from surface (if set)
+      const subMm   = surface?.substrate_mm;
+      const capMax  = substrateCapRadius(subMm);
+
+      // 3. Final max = min of species max and installation cap
+      const finalMax = Math.min(spMax === 999 ? 50 : spMax, capMax === Infinity ? 50 : capMax);
+      const finalDef = Math.min(spDef === 999 ? 3 : spDef, finalMax);
+
+      return {
+        min: spMin,
+        max: finalMax,
+        def: finalDef,
+        capLabel: subMm ? substrateCapLabel(subMm) : null,
+        substrateOk: !sz?.min_substrate_mm || !subMm || subMm >= sz.min_substrate_mm
+      };
+    }
+
+    // ── State ──────────────────────────────────────────────────
+    //  mode: 'idle' | 'placing_circle' | 'placing_polygon' | 'editing'
+    let placementMode    = 'idle';
+    let placingSpecies   = null;   // species object being placed
+    let placingCircle    = null;   // { cx, cz, radius } — preview
+    let placingPoly      = [];     // [{x,z}] — polygon vertices in progress
+    let previewMesh      = null;   // THREE.Mesh — live preview in scene
+    let editingInstance  = null;   // { surface, inst } — selected for edit
+
+    // ── Proxy mesh group ───────────────────────────────────────
+    const plantProxyGroup = new THREE.Group();
+    plantProxyGroup.renderOrder = 2;
+    scene.add(plantProxyGroup);
+
+    // ── Materials ──────────────────────────────────────────────
+    const PROXY_MAT = {
+      tree:       new THREE.MeshBasicMaterial({ color: 0x2d7a2d, side: THREE.DoubleSide }),
+      shrub:      new THREE.MeshBasicMaterial({ color: 0x3a9a3a, side: THREE.DoubleSide }),
+      bamboo:     new THREE.MeshBasicMaterial({ color: 0x4ab040, side: THREE.DoubleSide }),
+      groundcover:new THREE.MeshBasicMaterial({ color: 0x7ac050, opacity: 0.75, transparent: true, side: THREE.DoubleSide }),
+      polygon:    new THREE.MeshBasicMaterial({ color: 0x5ab848, opacity: 0.65, transparent: true, side: THREE.DoubleSide }),
+      preview:    new THREE.MeshBasicMaterial({ color: 0x44cc44, opacity: 0.45, transparent: true, side: THREE.DoubleSide }),
+      previewLine:new THREE.LineBasicMaterial({ color: 0x44cc44 }),
+      trunk:      new THREE.MeshBasicMaterial({ color: 0x8b6040 }),
+    };
+
+    // ── Coordinate helpers ─────────────────────────────────────
+    // Get surface bounding box centre (world space)
+    function getSurfaceCentre(surface) {
+      surface.mesh.geometry.computeBoundingBox();
+      const box = new THREE.Box3().copy(surface.mesh.geometry.boundingBox).applyMatrix4(surface.mesh.matrixWorld);
+      const c = new THREE.Vector3();
+      box.getCenter(c);
+      return c;
+    }
+
+    // Raycast screen NDC onto surface mesh → world point
+    function raycastSurface(ndc, surface) {
+      const r = new THREE.Raycaster();
+      r.setFromCamera(ndc, camera2D);
+      const hits = r.intersectObject(surface.mesh, false);
+      return hits.length ? hits[0].point : null;
+    }
+
+    // World point → surface-local UV (metres from centre)
+    function worldToSurfaceUV(worldPt, surface) {
+      const n   = surface.worldNormal.clone().normalize();
+      const isH = Math.abs(n.y) > 0.7;
+      const c   = getSurfaceCentre(surface);
+      if (isH) {
+        return { u: worldPt.x - c.x, v: worldPt.z - c.z };
+      } else {
+        // Wall — use surface tangent axes
+        const up    = new THREE.Vector3(0, 1, 0);
+        const right = new THREE.Vector3().crossVectors(up, n).normalize();
+        return {
+          u: worldPt.clone().sub(c).dot(right),
+          v: worldPt.y - c.y
+        };
+      }
+    }
+
+    // Surface UV → world point (on surface plane)
+    function surfaceUVToWorld(u, v, surface) {
+      const n   = surface.worldNormal.clone().normalize();
+      const isH = Math.abs(n.y) > 0.7;
+      const c   = getSurfaceCentre(surface);
+      if (isH) {
+        return new THREE.Vector3(c.x + u, c.y + 0.05, c.z + v);
+      } else {
+        const up    = new THREE.Vector3(0, 1, 0);
+        const right = new THREE.Vector3().crossVectors(up, n).normalize();
+        return c.clone()
+          .addScaledVector(right, u)
+          .addScaledVector(up, v)
+          .addScaledVector(n, 0.05);
+      }
+    }
+
+    // ── NDC from mouse event ────────────────────────────────────
+    function canvasNDC(e) {
+      const rect = renderer.domElement.getBoundingClientRect();
+      return new THREE.Vector2(
+         ((e.clientX - rect.left) / rect.width)  * 2 - 1,
+        -((e.clientY - rect.top)  / rect.height) * 2 + 1
+      );
+    }
+
+    // ── Start placement after modal ─────────────────────────────
+    function startPlacement(species) {
+      placingSpecies = species;
+      const pType    = placementTypeForCategory(species.category);
+      placementMode  = pType === 'circle' ? 'placing_circle' : 'placing_polygon';
+      placingCircle  = null;
+      placingPoly    = [];
+      clearPreview();
+
+      // Switch to 2D canvas of selected surface
+      switchMode('2d');
+
+      const hint = pType === 'circle'
+        ? 'Click to set centre, drag or click again to set radius'
+        : 'Click to add vertices, double-click or Enter to close polygon';
+      showFeedback(`Placing ${species.common} — ${hint}`, 0);
+      renderer.domElement.style.cursor = 'crosshair';
+    }
+
+    function cancelPlacement() {
+      placementMode   = 'idle';
+      placingSpecies  = null;
+      placingCircle   = null;
+      placingPoly     = [];
+      editingInstance = null;
+      clearPreview();
+      renderer.domElement.style.cursor = '';
+      showFeedback('Ready');
+    }
+
+    // ── Preview mesh helpers ────────────────────────────────────
+    function clearPreview() {
+      if (previewMesh) {
+        if (Array.isArray(previewMesh)) {
+          previewMesh.forEach(m => { scene.remove(m); m.geometry?.dispose(); });
+        } else {
+          scene.remove(previewMesh); previewMesh.geometry?.dispose();
+        }
+        previewMesh = null;
+      }
+    }
+
+    function showCirclePreview(cx, cz, radius, surface) {
+      clearPreview();
+      const segs = 48;
+      const pts  = [];
+      for (let i = 0; i <= segs; i++) {
+        const a = (i / segs) * Math.PI * 2;
+        const u = cx + Math.cos(a) * radius;
+        const v = cz + Math.sin(a) * radius;
+        pts.push(surfaceUVToWorld(u, v, surface));
+      }
+      const geom = new THREE.BufferGeometry().setFromPoints(pts);
+      previewMesh = new THREE.Line(geom, PROXY_MAT.previewLine);
+      previewMesh.renderOrder = 10;
+      scene.add(previewMesh);
+    }
+
+    function showPolygonPreview(pts, mouseUV, surface) {
+      clearPreview();
+      const lines = [];
+      if (pts.length >= 2) {
+        const worldPts = pts.map(p => surfaceUVToWorld(p.u, p.v, surface));
+        const geom = new THREE.BufferGeometry().setFromPoints(worldPts);
+        lines.push(new THREE.Line(geom, PROXY_MAT.previewLine));
+      }
+      if (pts.length >= 1 && mouseUV) {
+        const lastW = surfaceUVToWorld(pts[pts.length - 1].u, pts[pts.length - 1].v, surface);
+        const curW  = surfaceUVToWorld(mouseUV.u, mouseUV.v, surface);
+        const g2 = new THREE.BufferGeometry().setFromPoints([lastW, curW]);
+        lines.push(new THREE.Line(g2, PROXY_MAT.previewLine));
+      }
+      lines.forEach(l => { l.renderOrder = 10; scene.add(l); });
+      previewMesh = lines;
+    }
+
+    // ── 2D canvas mouse handlers for placement ─────────────────
+    let circlePhase = 'none'; // 'none' | 'centre_set'
+    let circleCentre = null; // { u, v } surface-local
+
+    renderer.domElement.addEventListener('click', e => {
+      if (currentMode !== '2d' || !selectedSurface) return;
+      if (placementMode === 'idle') return;
+
+      const ndc  = canvasNDC(e);
+      const wPt  = raycastSurface(ndc, selectedSurface);
+      if (!wPt) return;
+      const uv   = worldToSurfaceUV(wPt, selectedSurface);
+
+      if (placementMode === 'placing_circle') {
+        if (circlePhase === 'none') {
+          // First click: set centre
+          circleCentre = { u: uv.u, v: uv.v };
+          circlePhase  = 'centre_set';
+          showFeedback('Centre set — click again to set canopy radius', 0);
+        } else {
+          // Second click: set radius and place
+          const limits = radiusLimits(placingSpecies, selectedSurface);
+          const raw    = Math.hypot(uv.u - circleCentre.u, uv.v - circleCentre.v);
+          const radius = Math.min(limits.max, Math.max(limits.min, raw));
+          const area   = Math.round(Math.PI * radius * radius * 10) / 10;
+          const inst   = commitCirclePlacement(selectedSurface, placingSpecies, circleCentre, radius, area);
+          circleCentre = null;
+          circlePhase  = 'none';
+          placingSpecies = null;
+          placementMode  = 'idle';
+          clearPreview();
+          renderer.domElement.style.cursor = '';
+          showFeedback(`${inst.placement ? 'Placed' : 'Added'} plant — canopy ${area} m²`);
+        }
+        return;
+      }
+
+      if (placementMode === 'placing_polygon') {
+        placingPoly.push({ u: uv.u, v: uv.v });
+        showPolygonPreview(placingPoly, null, selectedSurface);
+        showFeedback(`${placingPoly.length} vertices — double-click or Enter to close`, 0);
+      }
+    });
+
+    renderer.domElement.addEventListener('dblclick', e => {
+      if (currentMode !== '2d' || placementMode !== 'placing_polygon') return;
+      if (placingPoly.length < 3) {
+        showFeedback('Need at least 3 points to close a polygon'); return;
+      }
+      commitPolygonPlacement(selectedSurface, placingSpecies, [...placingPoly]);
+      placingPoly    = [];
+      placingSpecies = null;
+      placementMode  = 'idle';
+      clearPreview();
+      renderer.domElement.style.cursor = '';
+    });
+
+    renderer.domElement.addEventListener('mousemove', e => {
+      if (currentMode !== '2d' || !selectedSurface) return;
+      const ndc = canvasNDC(e);
+      const wPt = raycastSurface(ndc, selectedSurface);
+      if (!wPt) return;
+      const uv  = worldToSurfaceUV(wPt, selectedSurface);
+
+      if (placementMode === 'placing_circle' && circlePhase === 'centre_set') {
+        const limits = radiusLimits(placingSpecies, selectedSurface);
+        const raw    = Math.hypot(uv.u - circleCentre.u, uv.v - circleCentre.v);
+        const radius = Math.min(limits.max, Math.max(limits.min, raw || limits.def));
+        showCirclePreview(circleCentre.u, circleCentre.v, radius, selectedSurface);
+      }
+
+      if (placementMode === 'placing_polygon' && placingPoly.length >= 1) {
+        showPolygonPreview(placingPoly, uv, selectedSurface);
+      }
+    });
+
+    // Enter key to close polygon
+    document.addEventListener('keydown', e => {
+      if (e.key === 'Enter' && placementMode === 'placing_polygon') {
+        if (placingPoly.length >= 3) {
+          commitPolygonPlacement(selectedSurface, placingSpecies, [...placingPoly]);
+          placingPoly    = [];
+          placingSpecies = null;
+          placementMode  = 'idle';
+          clearPreview();
+          renderer.domElement.style.cursor = '';
+        } else {
+          showFeedback('Need at least 3 points');
+        }
+      }
+      if (e.key === 'Escape' && placementMode !== 'idle') {
+        cancelPlacement();
+      }
+    });
+
+    // ── Commit placements ───────────────────────────────────────
+    function commitCirclePlacement(surface, species, centre, radius, area) {
+      if (!surface.plants) surface.plants = [];
+      const inst = {
+        instanceId:  ++_instanceCounter,
+        speciesId:   species.id,
+        canopyArea:  area,
+        placement: {
+          type:    'circle',
+          cx:      centre.u,
+          cz:      centre.v,
+          radius,
+          mesh:    null
+        }
+      };
+      surface.plants.push(inst);
+
+      // Build 3D proxy
+      inst.placement.mesh = buildCircleProxy(inst, surface, species);
+
+      updateSurfaceListTag(surface);
+      renderSurfacePlantSchedule(surface);
+      recalcGPR();
+      return inst;
+    }
+
+    function commitPolygonPlacement(surface, species, polyPts) {
+      const area = polygonArea(polyPts);
+      if (!surface.plants) surface.plants = [];
+      const inst = {
+        instanceId: ++_instanceCounter,
+        speciesId:  species.id,
+        canopyArea: Math.round(area * 10) / 10,
+        placement: {
+          type:   'polygon',
+          points: polyPts,
+          mesh:   null
+        }
+      };
+      surface.plants.push(inst);
+
+      // Build 3D proxy
+      inst.placement.mesh = buildPolygonProxy(inst, surface, species);
+
+      updateSurfaceListTag(surface);
+      renderSurfacePlantSchedule(surface);
+      recalcGPR();
+      showFeedback(`Placed ${species.common} — canopy ${inst.canopyArea} m²`);
+      return inst;
+    }
+
+    // ── Polygon area (Shoelace, surface-local coords) ───────────
+    function polygonArea(pts) {
+      let area = 0;
+      for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) {
+        area += (pts[j].u + pts[i].u) * (pts[j].v - pts[i].v);
+      }
+      return Math.abs(area / 2);
+    }
+
+    // ── 3D proxy builders ────────────────────────────────────────
+    function proxyMatForCategory(cat) {
+      if (!cat) return PROXY_MAT.tree;
+      const c = cat.toLowerCase();
+      if (c.includes('tree'))  return PROXY_MAT.tree;
+      if (c.includes('shrub')) return PROXY_MAT.shrub;
+      if (c.includes('bamboo') || c.includes('palm')) return PROXY_MAT.bamboo;
+      return PROXY_MAT.polygon;
+    }
+
+    function buildCircleProxy(inst, surface, species) {
+      const { cx, cz, radius } = inst.placement;
+      const worldCentre = surfaceUVToWorld(cx, cz, surface);
+      const cat  = (species.category || '').toLowerCase();
+      const isTree  = cat.includes('tree') || cat.includes('palm');
+      const isShrub = cat.includes('shrub');
+      const group = new THREE.Group();
+
+      if (isTree) {
+        // Canopy sphere
+        const cSphere = new THREE.Mesh(
+          new THREE.SphereGeometry(radius * 0.8, 10, 8),
+          PROXY_MAT.tree.clone()
+        );
+        cSphere.position.set(0, radius * 0.8 + radius * 0.5, 0);
+        group.add(cSphere);
+        // Trunk
+        const trunk = new THREE.Mesh(
+          new THREE.CylinderGeometry(radius * 0.07, radius * 0.1, radius * 1.2, 6),
+          PROXY_MAT.trunk.clone()
+        );
+        trunk.position.set(0, radius * 0.6, 0);
+        group.add(trunk);
+      } else if (isShrub) {
+        const sphere = new THREE.Mesh(
+          new THREE.SphereGeometry(radius, 8, 6),
+          PROXY_MAT.shrub.clone()
+        );
+        sphere.position.set(0, radius * 0.6, 0);
+        group.add(sphere);
+      } else {
+        // Bamboo / palm — cylinder clump
+        const cyl = new THREE.Mesh(
+          new THREE.CylinderGeometry(radius * 0.5, radius * 0.7, radius * 3, 6),
+          PROXY_MAT.bamboo.clone()
+        );
+        cyl.position.set(0, radius * 1.5, 0);
+        group.add(cyl);
+      }
+
+      // Also draw a flat circle on the surface to show canopy footprint
+      const circlePts = [];
+      for (let i = 0; i <= 32; i++) {
+        const a = (i / 32) * Math.PI * 2;
+        circlePts.push(surfaceUVToWorld(cx + Math.cos(a) * radius, cz + Math.sin(a) * radius, surface));
+      }
+      const lineGeom = new THREE.BufferGeometry().setFromPoints(circlePts);
+      const lineLoop  = new THREE.Line(lineGeom, new THREE.LineBasicMaterial({ color: 0x2d7a2d }));
+      lineLoop.renderOrder = 3;
+      scene.add(lineLoop);
+      inst.placement._footprintLine = lineLoop;
+
+      group.position.copy(worldCentre);
+      group.renderOrder = 3;
+      plantProxyGroup.add(group);
+      return group;
+    }
+
+    function buildPolygonProxy(inst, surface, species) {
+      const { points } = inst.placement;
+      if (points.length < 3) return null;
+
+      // Build Three.js ShapeGeometry in surface-local UV space,
+      // then transform each vertex to world space
+      const worldPts = points.map(p => surfaceUVToWorld(p.u, p.v, surface));
+      // Determine a local 2D basis to feed THREE.Shape
+      // For simplicity: use XZ world coords (works for horizontal surfaces)
+      // For walls: project onto the surface tangent plane
+      const n   = surface.worldNormal.clone().normalize();
+      const isH = Math.abs(n.y) > 0.7;
+
+      let shapePts;
+      if (isH) {
+        shapePts = worldPts.map(p => new THREE.Vector2(p.x, p.z));
+      } else {
+        const up    = new THREE.Vector3(0, 1, 0);
+        const right = new THREE.Vector3().crossVectors(up, n).normalize();
+        const c     = getSurfaceCentre(surface);
+        shapePts = worldPts.map(p => {
+          const d = p.clone().sub(c);
+          return new THREE.Vector2(d.dot(right), p.y - c.y);
+        });
+      }
+
+      const shape = new THREE.Shape(shapePts);
+      const geom  = new THREE.ShapeGeometry(shape);
+
+      if (isH) {
+        geom.rotateX(-Math.PI / 2);
+      } else {
+        // Orient in wall plane — translate back to world position
+        const c     = getSurfaceCentre(surface);
+        const up    = new THREE.Vector3(0, 1, 0);
+        const right = new THREE.Vector3().crossVectors(up, n).normalize();
+        const pos   = geom.attributes.position;
+        for (let i = 0; i < pos.count; i++) {
+          const u2 = pos.getX(i);
+          const v2 = pos.getY(i);
+          const wp  = c.clone().addScaledVector(right, u2).addScaledVector(up, v2).addScaledVector(n, 0.05);
+          pos.setXYZ(i, wp.x, wp.y, wp.z);
+        }
+        pos.needsUpdate = true;
+      }
+
+      const mat  = proxyMatForCategory(species.category);
+      const mesh = new THREE.Mesh(geom, mat.clone());
+
+      if (isH) {
+        // Translate to world Y
+        const c = getSurfaceCentre(surface);
+        mesh.position.y = c.y + 0.06;
+      }
+
+      mesh.renderOrder = 3;
+      plantProxyGroup.add(mesh);
+
+      // Also draw outline
+      const outlineGeom = new THREE.BufferGeometry().setFromPoints([...worldPts, worldPts[0]]);
+      const outline = new THREE.Line(outlineGeom, new THREE.LineBasicMaterial({ color: 0x2d7a2d }));
+      outline.renderOrder = 4;
+      scene.add(outline);
+      inst.placement._outlineLine = outline;
+
+      return mesh;
+    }
+
+    // ── Remove proxy meshes when clearing plants ────────────────
+    function removeProxyForInstance(inst) {
+      if (!inst.placement) return;
+      if (inst.placement.mesh) {
+        plantProxyGroup.remove(inst.placement.mesh);
+        inst.placement.mesh.traverse(c => c.geometry?.dispose());
+      }
+      if (inst.placement._footprintLine) {
+        scene.remove(inst.placement._footprintLine);
+        inst.placement._footprintLine.geometry?.dispose();
+      }
+      if (inst.placement._outlineLine) {
+        scene.remove(inst.placement._outlineLine);
+        inst.placement._outlineLine.geometry?.dispose();
+      }
+    }
+
+    function clearAllProxies() {
+      surfaces.forEach(s => {
+        (s.plants || []).forEach(inst => removeProxyForInstance(inst));
+      });
+      while (plantProxyGroup.children.length) {
+        const c = plantProxyGroup.children[0];
+        c.geometry?.dispose();
+        plantProxyGroup.remove(c);
+      }
+    }
+
+    // ── Patch clearPlantsBtn to also clear proxies ──────────────
+    // (re-bind — original bind is above, this overrides it)
     document.getElementById('clearPlantsBtn')?.addEventListener('click', () => {
       const total = surfaces.reduce((acc, s) => acc + (s.plants || []).length, 0);
       if (!total) { showFeedback('No plants assigned'); return; }
-      surfaces.forEach(s => { s.plants = []; updateSurfaceListTag(s); });
+      surfaces.forEach(s => {
+        (s.plants || []).forEach(inst => removeProxyForInstance(inst));
+        s.plants = [];
+        updateSurfaceListTag(s);
+      });
       if (selectedSurface) renderSurfacePlantSchedule(selectedSurface);
       recalcGPR();
       showFeedback(`Cleared ${total} plant instance${total > 1 ? 's' : ''}`);
     });
 
-    document.getElementById('gpr-target')?.addEventListener('input', recalcGPR);
+    // ── Also clear proxies when site is cleared ─────────────────
+    // Hook into clearSiteBtn — proxies must go with the model
+    const _origClearSite = document.getElementById('clearSiteBtn');
+    if (_origClearSite) {
+      _origClearSite.addEventListener('click', () => {
+        clearAllProxies();
+        cancelPlacement();
+      });
+    }
+
+    // ── Patch modal to trigger placement instead of direct add ──
+    // Override the assign button to start placement flow
+    document.getElementById('plant-assign-btn')?.addEventListener('click', () => {
+      if (!selectedSurface || !selectedPlant) return;
+      const sp = selectedPlant; // capture before modal close
+      closePlantModal();
+      startPlacement(sp);
+    });
+
+    // ── Patch addPlantBtn — also triggers modal (existing) ──────
+    // (no change needed — it opens the modal, modal now starts placement)
+
+    // ── Schedule row: show placement status ─────────────────────
+    // Patch renderSurfacePlantSchedule to add placement indicator
+    const _origRenderSchedule = renderSurfacePlantSchedule;
+    renderSurfacePlantSchedule = function(surface) {
+      _origRenderSchedule(surface);
+      // Add placement badges to each row
+      const listEl = document.getElementById('surf-plant-list');
+      if (!listEl || !surface) return;
+      const plants = surface.plants || [];
+      const rows   = listEl.querySelectorAll('div');
+      plants.forEach((inst, idx) => {
+        const row = rows[idx];
+        if (!row) return;
+        // Find or create placement badge
+        let badge = row.querySelector('.placement-badge');
+        if (!badge) {
+          badge = document.createElement('span');
+          badge.className = 'placement-badge';
+          badge.style.cssText = 'font-size:10px;padding:1px 5px;border-radius:3px;flex-shrink:0;cursor:pointer;';
+          // Insert before the × button (last child)
+          row.insertBefore(badge, row.lastChild);
+        }
+        if (inst.placement) {
+          const typeLabel = inst.placement.type === 'circle' ? '●' : '■';
+          badge.textContent = typeLabel + ' placed';
+          badge.style.background = '#1a3d1a';
+          badge.style.color      = '#7fc47f';
+          badge.style.border     = '1px solid #2e6b2e';
+          badge.title = 'Plant is placed on canvas. Click to re-place.';
+          badge.onclick = () => {
+            // Remove old proxy and start re-placement
+            removeProxyForInstance(inst);
+            inst.placement = null;
+            inst.canopyArea = surface.area;
+            renderSurfacePlantSchedule(surface);
+            const sp = plantDb.find(p => p.id === inst.speciesId);
+            if (sp) startPlacement(sp);
+          };
+        } else {
+          badge.textContent = 'unplaced';
+          badge.style.background = '#2a2a1a';
+          badge.style.color      = '#c4b47f';
+          badge.style.border     = '1px solid #5a5010';
+          badge.title = 'Not yet placed on canvas. Click to place.';
+          badge.onclick = () => {
+            const sp = plantDb.find(p => p.id === inst.speciesId);
+            if (sp) startPlacement(sp);
+          };
+        }
+      });
+    };
 
     /* ============================================================
        MENU BAR

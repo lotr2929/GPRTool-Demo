@@ -329,6 +329,27 @@ Proposed schema for future implementation:
 | Vertical greenery, hydroponic | 0.8–1.0 |
 | Atrium planting | 0.6–0.8 |
 
+**Important caveat:** These ranges are indicative estimates based on expert judgement, not measured data. They are not currently applied in GPRTool calculations. Until a peer-reviewed urban LAI calibration study exists, GPRTool uses the best-available measured LAI directly (Singapore field data where available; ORNL/TRY otherwise) and discloses the source provenance to the user.
+
+### LAI Context Variability — Research Programme
+
+LAI is not a fixed species property. It varies substantially with climate zone, urban vs natural context, installation type, light availability, and measurement method. The same species can yield values differing by 2–10× across these contexts. This is the central scientific limitation of all current GPR implementations.
+
+**Current database confidence tiers:**
+- **Tier 1 (urban field-measured):** 35 species — Singapore field data, Boon & Tan 2009. These are the only defensible urban LAI values currently available.
+- **Tier 2 (open-ground measured):** ~725 species — ORNL/TRY databases. Valid measurements but in natural/plantation contexts. Urban LAI will typically be 30–60% lower.
+- **Tier 3 (estimated):** Not yet added to database.
+
+**The research programme required to resolve this** involves systematic field measurement campaigns across climate zones (tropical, subtropical, temperate Mediterranean), controlled installation-type experiments, and peer-reviewed publication of an urban LAI adjustment framework. Estimated scope: AUD 500K–2M. This is a separate research project, not a development task.
+
+**GPRTool's role in the meantime:**
+- Always display the source and confidence tier alongside every LAI value
+- Never silently apply adjustment factors without measured backing
+- Make the uncertainty visible to the user, not hidden in the calculation
+- Position the tool as the delivery mechanism for the research output once it exists
+
+Full context variability analysis is documented in `GPR - LAI Values/LAI_DATABASE_STRATEGY.md`.
+
 ---
 
 ## 6. LAI REFERENCE VALUES
@@ -901,6 +922,43 @@ taskkill /PID <pid> /F
 5. GPR live calculation and display in right panel
 6. Species picker — dropdown linked to LAI database CSV
 7. Plant schedule — list of all placed elements with species, area, LAI, contribution
+
+---
+
+## SketchUp Interoperability
+
+SketchUp `.skp` files cannot be opened directly in a browser — the format is proprietary binary (Trimble) with no open-source JavaScript parser. GPRTool will never support direct SKP import.
+
+**SketchUp licensing reality:**
+- **SketchUp Free (web)** — no 3D export at all. Saves SKP only.
+- **SketchUp Go** (~AUD $170/yr) — still no 3D export.
+- **SketchUp Pro** (~AUD $500/yr) — OBJ, FBX, DAE, STL, and glTF/GLB (native since 2025).
+
+So OBJ and glTF export both require a paid Pro licence. There is no free SketchUp export path.
+
+**Practical free alternatives:**
+
+**Option A — SKP online converter (if you already have a SKP file)**
+- Upload to https://imagetostl.com/convert/file/skp/to/gltf
+- Download as GLB, import into GPRTool
+- Limitation: curved surfaces and textures are dropped; plain massing geometry works fine
+
+**Option B — Blender (free, recommended for new models)**
+- Free, open source, excellent OBJ and glTF export
+- For simple building massing: Add → Mesh → Cube, scale and extrude faces
+- File → Export → glTF 2.0 (.glb) — works perfectly with GPRTool
+
+**Option C — SketchUp Pro (if licence available)**
+- File → Export → 3D Model → glTF Binary (.glb)
+- Built-in since SketchUp 2025, no plugins needed
+
+**Modelling tips for GPRTool compatibility (any tool):**
+- Model in metres
+- Keep it as a simple massing — no doors, windows, or interior detail
+- Give each surface type its own object/group (site, podium, tower, roof)
+- Building base at Y=0 (ground plane)
+- Avoid interior faces — reversed normals confuse surface classification
+- Avoid curved geometry for now (imports correctly but surface detection is per-bounding-box)
 
 ---
 
