@@ -335,6 +335,23 @@
 
 </div>
 
+<!-- North Point -->
+<svg id="north-point" viewBox="0 0 56 56" xmlns="http://www.w3.org/2000/svg" title="North Point — drag to move, right-click for options">
+  <circle cx="28" cy="28" r="26" fill="white" fill-opacity="0.88" stroke="#aaa" stroke-width="1"/>
+  <!-- Filled (north) half of needle -->
+  <path d="M28 6 L33 28 L28 24 Z" fill="#1a1a1a"/>
+  <!-- Open (south) half of needle -->
+  <path d="M28 50 L23 28 L28 32 Z" fill="#888" fill-opacity="0.5"/>
+  <!-- N label -->
+  <text x="28" y="14" text-anchor="middle" font-size="9" font-family="Outfit, sans-serif" font-weight="700" fill="#1a1a1a" letter-spacing="0.5">N</text>
+</svg>
+
+<!-- North Point context menu -->
+<div id="north-ctx-menu" style="display:none">
+  <div id="north-ctx-reset">Reset to Default Position</div>
+  <div id="north-ctx-hide">Hide North Point</div>
+</div>
+
 <!-- Status bar -->
 <footer id="feedback-bar">
   <span id="status-mode">2D</span>

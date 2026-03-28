@@ -200,6 +200,28 @@
     .gpr-result.over-target  .info-value { color: #7fc47f; }
     .gpr-result.under-target .info-value { color: #e8a040; }
 
+    /* North Point */
+    #north-point {
+      position: fixed; width: 56px; height: 56px;
+      cursor: grab; z-index: 500; user-select: none;
+      filter: drop-shadow(0 2px 5px rgba(0,0,0,0.28));
+      touch-action: none;
+    }
+    #north-point:active { cursor: grabbing; }
+    #north-ctx-menu {
+      position: fixed;
+      background: var(--chrome-bg, #2c2c2c);
+      border: 1px solid var(--chrome-border, #444);
+      border-radius: 4px; padding: 4px 0;
+      z-index: 600; font-size: 12px; min-width: 195px;
+      box-shadow: 0 4px 14px rgba(0,0,0,0.45);
+    }
+    #north-ctx-menu div {
+      padding: 6px 14px; cursor: pointer;
+      color: var(--text-primary, #e8e8e8);
+    }
+    #north-ctx-menu div:hover { background: var(--chrome-hover, #383838); }
+
     /* Surface plant tag in surface list */
     .surface-plant-tag {
       font-size: 10px;
@@ -327,6 +349,7 @@
       const ctrl = e.ctrlKey || e.metaKey;
       if (ctrl && !e.shiftKey && e.key === 'f') { e.preventDefault(); document.getElementById('fitSiteBtn')?.click(); }
       if (ctrl && !e.shiftKey && e.key === 'g') { e.preventDefault(); document.getElementById('toggleGridBtn')?.click(); }
+      if (ctrl && !e.shiftKey && e.key === 't') { e.preventDefault(); toggleAxes(); }
       if (ctrl && !e.shiftKey && e.key === 'z') { e.preventDefault(); showFeedback('Undo — coming soon'); }
       if (ctrl &&  e.shiftKey && e.key === 'Z') { e.preventDefault(); showFeedback('Redo — coming soon'); }
       if (e.key === 'Escape') { deselectSurface(); showFeedback('Ready'); }
@@ -346,6 +369,7 @@
     let importedModel    = null;   // THREE.Group — the loaded 3D model
     let gridHelper       = null;
     let axesHelper       = null;
+    let axesYLine        = null;  // Y (green) — shown in 3D only
     let feedbackTimer    = null;
 
     // Surface registry — populated after model load
@@ -515,6 +539,7 @@
     function updateSceneHelpers(siteSpan) {
       if (gridHelper) { scene.remove(gridHelper); gridHelper.geometry?.dispose(); gridHelper = null; }
       if (axesHelper) { scene.remove(axesHelper); axesHelper = null; }
+      axesYLine = null;
 
       const gridSize = 10000;
       const rawCell  = siteSpan / 100;
@@ -526,16 +551,18 @@
       scene.add(gridHelper);
 
       const axisLen = siteSpan * 0.3;
-      const makeAxis = (x2, z2, color) => {
+      const makeAxisLine = (end, color) => {
         const geom = new THREE.BufferGeometry().setFromPoints([
-          new THREE.Vector3(0, 0, 0),
-          new THREE.Vector3(x2, 0, z2)
+          new THREE.Vector3(0, 0, 0), end
         ]);
         return new THREE.Line(geom, new THREE.LineBasicMaterial({ color, depthTest: false }));
       };
       axesHelper = new THREE.Group();
-      axesHelper.add(makeAxis(axisLen, 0, 0xff2222));
-      axesHelper.add(makeAxis(0, axisLen, 0x2255ff));
+      axesHelper.add(makeAxisLine(new THREE.Vector3(axisLen, 0, 0), 0xff2222)); // X red
+      axesHelper.add(makeAxisLine(new THREE.Vector3(0, 0, axisLen), 0x2255ff)); // Z blue
+      axesYLine = makeAxisLine(new THREE.Vector3(0, axisLen, 0), 0x22aa44);     // Y green
+      axesHelper.add(axesYLine);
+      axesYLine.visible = (currentMode === '3d');
       axesHelper.renderOrder = 999;
       scene.add(axesHelper);
     }
@@ -633,6 +660,11 @@
       if (toggle) mapTileGroup.visible = toggle.checked;
     }
 
+    function mercatorY(lat) {
+      const rad = lat * Math.PI / 180;
+      return 6378137 * Math.log(Math.tan(Math.PI / 4 + rad / 2));
+    }
+
     function loadOneTile(tx, ty, z, bbox) {
       const url = TILE_SERVER
         .replace('{z}', z).replace('{x}', tx).replace('{y}', ty);
@@ -640,8 +672,12 @@
       const east  = tileXToLon(tx + 1, z);
       const north = tileYToLat(ty,     z);
       const south = tileYToLat(ty + 1, z);
-      const [x0, z0] = latlonToMetres(west,  north, bbox.cLon, bbox.cLat);
-      const [x1, z1] = latlonToMetres(east,  south, bbox.cLon, bbox.cLat);
+      const cosLat = Math.cos(bbox.cLat * Math.PI / 180) * 111320;
+      const mYc    = mercatorY(bbox.cLat);
+      const x0 =  (west  - bbox.cLon) * cosLat;
+      const x1 =  (east  - bbox.cLon) * cosLat;
+      const z0 = -(mercatorY(north) - mYc) * Math.cos(bbox.cLat * Math.PI / 180);
+      const z1 = -(mercatorY(south) - mYc) * Math.cos(bbox.cLat * Math.PI / 180);
       const cx = (x0 + x1) / 2;
       const cz = (z0 + z1) / 2;
       const w  = Math.abs(x1 - x0);
@@ -1757,8 +1793,10 @@
         } else {
           clearSurfaceCanvasOutline();
           if (gridHelper) gridHelper.visible = true;
+          if (axesHelper) axesHelper.visible = true;
+          if (axesYLine)  axesYLine.visible  = false;
           if (siteBoundaryLine) fit2DCamera(new THREE.Box3().setFromObject(siteBoundaryLine));
-          else if (importedModel)  fit2DCamera(new THREE.Box3().setFromObject(importedModel));
+          else if (importedModel) fit2DCamera(new THREE.Box3().setFromObject(importedModel));
           document.getElementById('status-mode').textContent = '2D';
           showFeedback('2D Plan View');
         }
@@ -1767,7 +1805,8 @@
         controls = controls3D;
         clearSurfaceCanvasOutline();
         if (gridHelper) gridHelper.visible = false;
-        if (axesHelper)  axesHelper.visible = true;
+        if (axesHelper) axesHelper.visible = true;
+        if (axesYLine)  axesYLine.visible  = true;
         const target = importedModel
           ? new THREE.Box3().setFromObject(importedModel)
           : (siteBoundaryLine ? new THREE.Box3().setFromObject(siteBoundaryLine) : null);
@@ -1844,6 +1883,7 @@
     ============================================================ */
     (function animate() {
       controls.update();
+      updateNorthRotation();
       renderer.render(scene, camera);
       requestAnimationFrame(animate);
     })();
@@ -2997,11 +3037,105 @@
         const action = a.dataset.action;
         if      (action === 'fit-site')           document.getElementById('fitSiteBtn')?.click();
         else if (action === 'toggle-grid')         document.getElementById('toggleGridBtn')?.click();
+        else if (action === 'toggle-axes')         toggleAxes();
+        else if (action === 'north-pointer')       toggleNorthPoint();
+        else if (action === 'north-reset')         resetNorthPos();
         else if (action === 'import-model')        document.getElementById('import3DModelBtn')?.click();
         else if (action === 'import-geojson-menu') document.getElementById('importGeoJSONBtn')?.click();
         else if (action === 'import-image')        document.getElementById('importImageBtn')?.click();
         else    showFeedback(`${action} \u2014 coming soon`);
       }));
+
+    /* ============================================================
+       TOGGLE AXES
+    ============================================================ */
+    function toggleAxes() {
+      if (!axesHelper) return;
+      axesHelper.visible = !axesHelper.visible;
+      showFeedback('Axes ' + (axesHelper.visible ? 'on' : 'off'));
+    }
+
+    /* ============================================================
+       NORTH POINT
+    ============================================================ */
+    const NP_KEY  = 'gprtool-north-pos';
+    const NP_SIZE = 56, NP_MARGIN = 16;
+    const northEl  = document.getElementById('north-point');
+    const northCtx = document.getElementById('north-ctx-menu');
+
+    function northDefaultPos() {
+      return { left: window.innerWidth - NP_MARGIN - NP_SIZE, top: window.innerHeight - NP_MARGIN - NP_SIZE };
+    }
+    function applyNorthPos(left, top) {
+      left = Math.max(0, Math.min(window.innerWidth  - NP_SIZE, left));
+      top  = Math.max(0, Math.min(window.innerHeight - NP_SIZE, top));
+      northEl.style.left = left + 'px';
+      northEl.style.top  = top  + 'px';
+      try { localStorage.setItem(NP_KEY, JSON.stringify({ left, top })); } catch {}
+    }
+    function resetNorthPos() { const p = northDefaultPos(); applyNorthPos(p.left, p.top); }
+    function toggleNorthPoint() {
+      if (northEl) northEl.style.display = northEl.style.display === 'none' ? '' : 'none';
+    }
+
+    // Restore saved position or default
+    if (northEl) {
+      try {
+        const saved = JSON.parse(localStorage.getItem(NP_KEY));
+        if (saved?.left != null) { northEl.style.left = saved.left + 'px'; northEl.style.top = saved.top + 'px'; }
+        else resetNorthPos();
+      } catch { resetNorthPos(); }
+
+      // Drag
+      let _npDrag = false, _npOff = { x: 0, y: 0 };
+      northEl.addEventListener('pointerdown', e => {
+        if (e.button !== 0) return;
+        _npDrag = true;
+        const r = northEl.getBoundingClientRect();
+        _npOff  = { x: e.clientX - r.left, y: e.clientY - r.top };
+        northEl.setPointerCapture(e.pointerId);
+        northEl.style.cursor = 'grabbing';
+        e.stopPropagation(); e.preventDefault();
+      });
+      document.addEventListener('pointermove', e => {
+        if (_npDrag) applyNorthPos(e.clientX - _npOff.x, e.clientY - _npOff.y);
+      });
+      document.addEventListener('pointerup', () => {
+        if (_npDrag) { _npDrag = false; northEl.style.cursor = 'grab'; }
+      });
+      northEl.addEventListener('contextmenu', e => {
+        e.preventDefault(); e.stopPropagation();
+        if (northCtx) {
+          northCtx.style.left    = e.clientX + 'px';
+          northCtx.style.top     = e.clientY + 'px';
+          northCtx.style.display = 'block';
+        }
+      });
+    }
+    document.addEventListener('click', e => {
+      if (northCtx && !northCtx.contains(e.target)) northCtx.style.display = 'none';
+    });
+    document.getElementById('north-ctx-reset')?.addEventListener('click', () => {
+      resetNorthPos(); if (northCtx) northCtx.style.display = 'none';
+    });
+    document.getElementById('north-ctx-hide')?.addEventListener('click', () => {
+      if (northEl) northEl.style.display = 'none';
+      if (northCtx) northCtx.style.display = 'none';
+    });
+
+    // Compass rotation — called each animation frame
+    const _npO = new THREE.Vector3(), _npN = new THREE.Vector3();
+    function updateNorthRotation() {
+      if (!northEl || northEl.style.display === 'none') return;
+      const cam    = (currentMode === '3d') ? camera3D : camera2D;
+      const target = (currentMode === '3d')
+        ? controls3D.target
+        : new THREE.Vector3(pan2D.x, 0, pan2D.z);
+      _npO.copy(target).project(cam);
+      _npN.copy(target).add(new THREE.Vector3(0, 0, -500)).project(cam);
+      const deg = Math.atan2(_npN.x - _npO.x, _npN.y - _npO.y) * 180 / Math.PI;
+      northEl.style.transform = `rotate(${deg}deg)`;
+    }
 
     showFeedback('GPRTool ready', 2000);
   </script>
