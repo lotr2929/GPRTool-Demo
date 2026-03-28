@@ -342,6 +342,7 @@
     let siteBoundaryLine = null;
     let siteSurface      = null;
     let terrainMesh      = null;
+    let mapTileGroup     = null;
     let importedModel    = null;   // THREE.Group — the loaded 3D model
     let gridHelper       = null;
     let axesHelper       = null;
@@ -589,6 +590,84 @@
         perim += Math.hypot(x2 - x1, z2 - z1);
       }
       return perim;
+    }
+
+    /* ============================================================
+       MAP TILE OVERLAY
+    ============================================================ */
+    const MAP_ZOOM    = 18;
+    const TILE_SERVER = 'https://a.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png';
+
+    function lonToTileX(lon, z) {
+      return Math.floor((lon + 180) / 360 * Math.pow(2, z));
+    }
+    function latToTileY(lat, z) {
+      const rad = lat * Math.PI / 180;
+      return Math.floor((1 - Math.log(Math.tan(rad) + 1 / Math.cos(rad)) / Math.PI) / 2 * Math.pow(2, z));
+    }
+    function tileXToLon(tx, z) { return tx / Math.pow(2, z) * 360 - 180; }
+    function tileYToLat(ty, z) {
+      const n = Math.PI - 2 * Math.PI * ty / Math.pow(2, z);
+      return 180 / Math.PI * Math.atan(0.5 * (Math.exp(n) - Math.exp(-n)));
+    }
+
+    function loadMapTiles(bbox) {
+      clearMapTiles();
+      mapTileGroup = new THREE.Group();
+      mapTileGroup.name = 'map-tiles';
+      scene.add(mapTileGroup);
+
+      const z    = MAP_ZOOM;
+      const txMn = lonToTileX(bbox.west,  z) - 1;
+      const txMx = lonToTileX(bbox.east,  z) + 1;
+      const tyMn = latToTileY(bbox.north, z) - 1; // tile Y increases southward
+      const tyMx = latToTileY(bbox.south, z) + 1;
+
+      for (let tx = txMn; tx <= txMx; tx++) {
+        for (let ty = tyMn; ty <= tyMx; ty++) {
+          loadOneTile(tx, ty, z, bbox);
+        }
+      }
+
+      const toggle = document.getElementById('mapOverlayToggle');
+      if (toggle) mapTileGroup.visible = toggle.checked;
+    }
+
+    function loadOneTile(tx, ty, z, bbox) {
+      const url = TILE_SERVER
+        .replace('{z}', z).replace('{x}', tx).replace('{y}', ty);
+      const west  = tileXToLon(tx,     z);
+      const east  = tileXToLon(tx + 1, z);
+      const north = tileYToLat(ty,     z);
+      const south = tileYToLat(ty + 1, z);
+      const [x0, z0] = latlonToMetres(west,  north, bbox.cLon, bbox.cLat);
+      const [x1, z1] = latlonToMetres(east,  south, bbox.cLon, bbox.cLat);
+      const cx = (x0 + x1) / 2;
+      const cz = (z0 + z1) / 2;
+      const w  = Math.abs(x1 - x0);
+      const h  = Math.abs(z1 - z0);
+      new THREE.TextureLoader().load(url, texture => {
+        if (!mapTileGroup) return;
+        texture.colorSpace = THREE.SRGBColorSpace;
+        const geom = new THREE.PlaneGeometry(w, h);
+        const mat  = new THREE.MeshBasicMaterial({ map: texture, depthWrite: false });
+        const mesh = new THREE.Mesh(geom, mat);
+        mesh.rotation.x = -Math.PI / 2;
+        mesh.position.set(cx, -0.15, cz);
+        mesh.renderOrder = -2;
+        mapTileGroup.add(mesh);
+      }, undefined, () => { /* silently ignore tile load errors */ });
+    }
+
+    function clearMapTiles() {
+      if (!mapTileGroup) return;
+      mapTileGroup.children.forEach(c => {
+        c.geometry?.dispose();
+        c.material?.map?.dispose();
+        c.material?.dispose();
+      });
+      scene.remove(mapTileGroup);
+      mapTileGroup = null;
     }
 
     /* ============================================================
@@ -1412,7 +1491,7 @@
       if (siteSurface) { scene.remove(siteSurface); siteSurface.geometry.dispose(); siteSurface = null; }
       const shape     = new THREE.Shape(points.map(p => new THREE.Vector2(p.x, p.z)));
       const shapeGeom = new THREE.ShapeGeometry(shape);
-      shapeGeom.rotateX(-Math.PI / 2);
+      shapeGeom.rotateX(Math.PI / 2);
       shapeGeom.translate(0, -0.05, 0);
       siteSurface = new THREE.Mesh(
         shapeGeom,
@@ -1429,6 +1508,7 @@
 
       updateSceneHelpers(siteSpan);
       fit2DCamera(box);
+      loadMapTiles(bbox);
       switchMode('2d');
 
       const area      = computePolygonArea(coords);
@@ -1848,6 +1928,7 @@
         terrainMesh.geometry.dispose();
         terrainMesh = null;
       }
+      clearMapTiles();
       surfaces        = [];
       hoveredSurface  = null;
       selectedSurface = null;
@@ -1902,6 +1983,10 @@
     /* ============================================================
        PLACEHOLDER BUTTONS
     ============================================================ */
+    document.getElementById('mapOverlayToggle')?.addEventListener('change', e => {
+      if (mapTileGroup) mapTileGroup.visible = e.target.checked;
+    });
+
     document.getElementById('importImageBtn')?.addEventListener('click',      () => showFeedback('Image underlay \u2014 coming soon'));
     document.getElementById('setScaleBtn')?.addEventListener('click',         () => showFeedback('Set Scale \u2014 coming soon'));
     document.getElementById('setNorthBtn')?.addEventListener('click',         () => showFeedback('Set North \u2014 coming soon'));
