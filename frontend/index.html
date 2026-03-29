@@ -3044,7 +3044,7 @@
         if      (action === 'fit-site')           document.getElementById('fitSiteBtn')?.click();
         else if (action === 'toggle-grid')         document.getElementById('toggleGridBtn')?.click();
         else if (action === 'toggle-axes')         toggleAxes();
-        else if (action === 'north-pointer')       /* North Pointer toggle removed */;
+        else if (action === 'north-pointer')       toggleNorthPoint();
         else if (action === 'north-reset')         resetNorthPos();
         else if (action === 'import-model')        document.getElementById('import3DModelBtn')?.click();
         else if (action === 'import-geojson-menu') document.getElementById('importGeoJSONBtn')?.click();
@@ -3083,14 +3083,20 @@
     }
 
     function applyNorthPos(right, bottom) {
-      // Apply CSS positioning from edges
+      // Clamp within viewport so NP can never be dragged off-screen
+      const { width, height } = getNorthDimensions();
+      const vw = northVP ? northVP.clientWidth  : window.innerWidth;
+      const vh = northVP ? northVP.clientHeight : window.innerHeight;
+      right  = Math.max(0, Math.min(vw  - width,  right));
+      bottom = Math.max(0, Math.min(vh  - height, bottom));
+
       northEl.style.right  = right + 'px';
       northEl.style.bottom = bottom + 'px';
       northEl.style.left   = '';
       northEl.style.top    = '';
-      
-      try { 
-        localStorage.setItem(NP_KEY, JSON.stringify({ right, bottom })); 
+
+      try {
+        localStorage.setItem(NP_KEY, JSON.stringify({ right, bottom }));
       } catch {}
     }
 
@@ -3261,21 +3267,21 @@
       // Don't drag if clicking on resize handle or if resizing
       if (e.target.classList.contains('resize-handle') || isResizing) return;
       if (e.button !== 0) return;
-      
+
       isDragging = true;
       const rect = northEl.getBoundingClientRect();
       const viewportRect = northVP ? northVP.getBoundingClientRect() : { left: 0, top: 0 };
-      const vw = northVP ? northVP.clientWidth : window.innerWidth;
-      const vh = northVP ? northVP.clientHeight : window.innerHeight;
-      
-      // Calculate offset from right/bottom edges
+
+      // Offset = distance from mouse to element's right/bottom edge (viewport-relative)
       const mouseX = e.clientX - viewportRect.left;
       const mouseY = e.clientY - viewportRect.top;
+      const elementRight  = rect.right  - viewportRect.left;
+      const elementBottom = rect.bottom - viewportRect.top;
       dragOffset = {
-        x: (vw - rect.right) + mouseX,
-        y: (vh - rect.bottom) + mouseY
+        x: elementRight  - mouseX,
+        y: elementBottom - mouseY
       };
-      
+
       northEl.setPointerCapture(e.pointerId);
       northEl.style.cursor = 'grabbing';
       e.stopPropagation();
@@ -3284,17 +3290,17 @@
 
     function handleDrag(e) {
       if (!isDragging) return;
-      
+
       const viewportRect = northVP ? northVP.getBoundingClientRect() : { left: 0, top: 0 };
-      const vw = northVP ? northVP.clientWidth : window.innerWidth;
+      const vw = northVP ? northVP.clientWidth  : window.innerWidth;
       const vh = northVP ? northVP.clientHeight : window.innerHeight;
-      
-      // Calculate right/bottom from mouse position
+
+      // right/bottom = viewport edge minus (mouse + drag offset restores original gap)
       const mouseX = e.clientX - viewportRect.left;
       const mouseY = e.clientY - viewportRect.top;
-      const right = vw - mouseX - dragOffset.x;
-      const bottom = vh - mouseY - dragOffset.y;
-      
+      const right  = vw - (mouseX + dragOffset.x);
+      const bottom = vh - (mouseY + dragOffset.y);
+
       applyNorthPos(right, bottom);
     }
 
