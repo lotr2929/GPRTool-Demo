@@ -24,7 +24,6 @@ for /f "usebackq tokens=1,* delims==" %%A in ("deploy.env") do (
 
 if "%VERCEL_TOKEN%"=="PASTE_YOUR_TOKEN_HERE" (
     echo ERROR: VERCEL_TOKEN not set in deploy.env.
-    echo Copy your personal access token from Mobius\Mobius_Vercel\deploy.env.
     pause
     exit /b 1
 )
@@ -43,21 +42,28 @@ if %errorlevel% equ 0 (
 )
 
 REM -----------------------------------------
-REM 2. Prompt for commit message
+REM 2. Auto-generate commit message via PowerShell
+REM    Written to temp file to avoid cmd quoting issues
+REM    Format: 2026-03-29 14:32 - 3 files: a.js b.css c.html
 REM -----------------------------------------
-echo.
-set /p commit_msg="Commit message: "
+powershell -NoProfile -Command ^
+  "$ts = Get-Date -Format 'yyyy-MM-dd HH:mm';" ^
+  "$files = git diff --cached --name-only | ForEach-Object { Split-Path $_ -Leaf };" ^
+  "$count = $files.Count;" ^
+  "$names = ($files | Select-Object -First 4) -join ' ';" ^
+  "$msg = \"$ts - $count file(s): $names\";" ^
+  "Set-Content -Path '%TEMP%\gpr_commit_msg.txt' -Value $msg -Encoding UTF8"
 
-if "%commit_msg%"=="" (
-    echo ERROR: Commit message cannot be empty.
-    pause
-    exit /b 1
-)
+set /p commit_msg=<"%TEMP%\gpr_commit_msg.txt"
+del "%TEMP%\gpr_commit_msg.txt" 2>nul
+
+echo.
+echo Commit message: %commit_msg%
+echo.
 
 REM -----------------------------------------
 REM 3. Commit
 REM -----------------------------------------
-echo.
 echo Committing...
 git commit -m "%commit_msg%"
 if %errorlevel% neq 0 (

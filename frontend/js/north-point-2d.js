@@ -175,11 +175,16 @@ function applyDesignNorth(deg) {
       dnGroupEl.style.display = '';
       dnGroupEl.setAttribute('transform', `rotate(${deg}, ${SVG_CX}, ${SVG_CY})`);
       dnLabelEl.textContent = formatNorthAngle(deg);
-      // Counter-rotate label around its own anchor so it stays horizontal on screen
-      const lx = SVG_CX + 4;
-      const ly = SVG_CY - 32;
+      // Label sits just outside the circle at the arrow tip (y=15, circle edge y=18)
+      // W (negative) → right-aligned, anchor left of centre  → text flows left  (away from N)
+      // E (positive) → left-aligned,  anchor right of centre → text flows right (away from N)
+      const isWest = deg < 0;
+      const lx = isWest ? SVG_CX - 2 : SVG_CX + 2;
+      const ly = SVG_CY - 26;  // just outside circle edge
       dnLabelEl.setAttribute('x', lx);
       dnLabelEl.setAttribute('y', ly);
+      dnLabelEl.setAttribute('text-anchor', isWest ? 'end' : 'start');
+      // Counter-rotate around label anchor so it stays horizontal on screen
       dnLabelEl.setAttribute('transform', `rotate(${-deg}, ${lx}, ${ly})`);
     } else {
       dnGroupEl.style.display = 'none';
@@ -263,6 +268,11 @@ function onClickOutsideDNInput(e) {
 }
 
 // ── SVG injection ─────────────────────────────────────────────
+// Arrow geometry (local coords, pointing straight up before group rotation):
+//   Circle centre: (32, 40), radius 22 — edge at y=18
+//   Arrowhead tip:    y = 21  (just inside circle edge)
+//   Arrowhead base:   y = 28
+//   Shaft:            y = 28 → y = 37 (stops before centre clutter)
 
 function injectDNGroup(svg) {
   svg.setAttribute('overflow', 'visible');
@@ -271,25 +281,29 @@ function injectDNGroup(svg) {
   g.id = 'np-dn-group';
   g.style.display = 'none';
 
-  // Long line through circle centre — extends well beyond SVG bounds
-  const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
-  line.id = 'np-dn-line';
-  line.setAttribute('x1', SVG_CX);
-  line.setAttribute('y1', SVG_CY - 55);   // extends 33 units above circle edge
-  line.setAttribute('x2', SVG_CX);
-  line.setAttribute('y2', SVG_CY + 55);   // extends 33 units below circle edge
-  line.setAttribute('stroke', '#4a8a4a');
-  line.setAttribute('stroke-width', '1.5');
+  // Arrow shaft
+  const shaft = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+  shaft.setAttribute('x1', SVG_CX);
+  shaft.setAttribute('y1', '28');
+  shaft.setAttribute('x2', SVG_CX);
+  shaft.setAttribute('y2', '37');
+  shaft.setAttribute('stroke', '#4a8a4a');
+  shaft.setAttribute('stroke-width', '1.5');
 
-  // Label — position and counter-rotation set in applyDesignNorth()
+  // Arrowhead — small filled triangle
+  const head = document.createElementNS('http://www.w3.org/2000/svg', 'polygon');
+  head.setAttribute('points', '32,21 29,28 35,28');
+  head.setAttribute('fill', '#4a8a4a');
+
+  // Label — outside circle at arrow tip; position/anchor set in applyDesignNorth()
   const label = document.createElementNS('http://www.w3.org/2000/svg', 'text');
   label.id = 'np-dn-label';
   label.setAttribute('font-size', '8');
   label.setAttribute('font-family', 'Outfit, sans-serif');
-  label.setAttribute('fill', '#7fc47f');
-  label.setAttribute('text-anchor', 'start');
+  label.setAttribute('fill', '#4a8a4a');
 
-  g.appendChild(line);
+  g.appendChild(shaft);
+  g.appendChild(head);
   g.appendChild(label);
   svg.appendChild(g);
 
