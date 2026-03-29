@@ -160,22 +160,23 @@
   <main id="viewport" class="viewport">
     <canvas id="three-canvas"></canvas>
 
-    <!-- North Point — inside viewport so position:absolute is relative to the canvas area -->
-    <div id="north-point" 
-         style="position:absolute; right:16px; bottom:16px;"
-         title="North Point — click to select handles, drag to move, corner-drag to resize">
-      <svg viewBox="0 0 64 72" xmlns="http://www.w3.org/2000/svg" style="width:100%; height:100%;">
-        <text x="32" y="11" text-anchor="middle" font-size="13" font-family="Outfit, Georgia, serif" font-weight="700" fill="#1a1a1a">N</text>
-        <circle cx="32" cy="40" r="22" fill="white" fill-opacity="0.90" stroke="#555" stroke-width="1.5"/>
-        <line x1="32" y1="15" x2="32" y2="20" stroke="#555" stroke-width="1.5"/>
-        <line x1="32" y1="60" x2="32" y2="65" stroke="#555" stroke-width="1.5"/>
-        <line x1="7"  y1="40" x2="12" y2="40" stroke="#555" stroke-width="1.5"/>
-        <line x1="52" y1="40" x2="57" y2="40" stroke="#555" stroke-width="1.5"/>
-        <polygon points="32,20 32,40 42,43" fill="#1a1a1a"/>
-        <polygon points="32,60 32,40 22,37" fill="none" stroke="#555" stroke-width="1.2"/>
-      </svg>
-      
-      <!-- Resize handles (hidden by default) -->
+    <!-- North Point 2D compass
+         #np-container : position + size only — NEVER rotated
+         #np-rotator   : rotation only — NEVER positioned -->
+    <div id="np-container" title="North Point — drag to move, corner-drag to resize">
+      <div id="np-rotator">
+        <svg viewBox="0 0 64 72" xmlns="http://www.w3.org/2000/svg" style="width:100%; height:100%;">
+          <text x="32" y="11" text-anchor="middle" font-size="13" font-family="Outfit, Georgia, serif" font-weight="700" fill="#1a1a1a">N</text>
+          <circle cx="32" cy="40" r="22" fill="white" fill-opacity="0.90" stroke="#555" stroke-width="1.5"/>
+          <line x1="32" y1="15" x2="32" y2="20" stroke="#555" stroke-width="1.5"/>
+          <line x1="32" y1="60" x2="32" y2="65" stroke="#555" stroke-width="1.5"/>
+          <line x1="7"  y1="40" x2="12" y2="40" stroke="#555" stroke-width="1.5"/>
+          <line x1="52" y1="40" x2="57" y2="40" stroke="#555" stroke-width="1.5"/>
+          <polygon points="32,20 32,40 42,43" fill="#1a1a1a"/>
+          <polygon points="32,60 32,40 22,37" fill="none" stroke="#555" stroke-width="1.2"/>
+        </svg>
+      </div>
+      <!-- Resize handles on container — always in layout space, unaffected by rotator -->
       <div class="resize-handle nw" data-handle="nw"></div>
       <div class="resize-handle ne" data-handle="ne"></div>
       <div class="resize-handle sw" data-handle="sw"></div>
@@ -183,9 +184,9 @@
     </div>
 
     <!-- North Point context menu -->
-    <div id="north-ctx-menu" style="display:none;position:fixed">
-      <div id="north-ctx-reset">Reset to Default Position</div>
-      <div id="north-ctx-hide">Hide North Point</div>
+    <div id="np-ctx-menu" style="display:none;position:fixed">
+      <div id="np-ctx-reset">Reset to Default Position</div>
+      <div id="np-ctx-hide">Hide North Point</div>
     </div>
     <div class="mode-toggle-container">
       <button class="mode-btn active" data-mode="2d" title="2D View (right-click for options)"></button>

@@ -200,27 +200,7 @@
     .gpr-result.over-target  .info-value { color: #7fc47f; }
     .gpr-result.under-target .info-value { color: #e8a040; }
 
-    /* North Point */
-    #north-point {
-      position: absolute; width: 77px; height: 86px;
-      cursor: grab; z-index: 500; user-select: none;
-      filter: drop-shadow(0 2px 5px rgba(0,0,0,0.28));
-      touch-action: none;
-    }
-    #north-point:active { cursor: grabbing; }
-    #north-ctx-menu {
-      position: fixed;
-      background: var(--chrome-bg, #2c2c2c);
-      border: 1px solid var(--chrome-border, #444);
-      border-radius: 4px; padding: 4px 0;
-      z-index: 600; font-size: 12px; min-width: 195px;
-      box-shadow: 0 4px 14px rgba(0,0,0,0.45);
-    }
-    #north-ctx-menu div {
-      padding: 6px 14px; cursor: pointer;
-      color: var(--text-primary, #e8e8e8);
-    }
-    #north-ctx-menu div:hover { background: var(--chrome-hover, #383838); }
+    /* North Point styles → styles.css */
 
     /* Surface plant tag in surface list */
     .surface-plant-tag {
@@ -244,6 +224,12 @@
     import { OrbitControls } from './js/OrbitControls.js';
     import { OBJLoader }  from 'three/addons/loaders/OBJLoader.js';
     import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+    import {
+      initNorthPoint2D,
+      updateNorthRotation,
+      toggleNorthPoint,
+      resetNorthPos,
+    } from './js/north-point-2d.js';
 
     /* ============================================================
        LOAD HEADER + BODY
@@ -1881,12 +1867,6 @@
     /* ============================================================
        ANIMATION LOOP
     ============================================================ */
-    // North Point elements - declared early to avoid ReferenceError
-    const northEl  = document.getElementById('north-point');
-    const northCtx = document.getElementById('north-ctx-menu');
-    const northVP  = document.getElementById('viewport');
-    const _npO = new THREE.Vector3(), _npN = new THREE.Vector3();
-
     (function animate() {
       controls.update();
       updateNorthRotation();
@@ -3046,6 +3026,7 @@
         else if (action === 'toggle-axes')         toggleAxes();
         else if (action === 'north-pointer')       toggleNorthPoint();
         else if (action === 'north-reset')         resetNorthPos();
+        // Note: toggleNorthPoint / resetNorthPos imported from north-point-2d.js
         else if (action === 'import-model')        document.getElementById('import3DModelBtn')?.click();
         else if (action === 'import-geojson-menu') document.getElementById('importGeoJSONBtn')?.click();
         else if (action === 'import-image')        document.getElementById('importImageBtn')?.click();
@@ -3062,346 +3043,9 @@
     }
 
     /* ============================================================
-       NORTH POINT - SCALABLE WITH RESIZE HANDLES
+       NORTH POINT 2D — initialise module
     ============================================================ */
-    const NP_KEY  = 'gprtool-north-pos-v3';  // v3: absolute inside viewport
-    const NP_SCALE_KEY = 'gprtool-north-scale-v1';
-    const NP_BASE_W = 77, NP_BASE_H = 86, NP_MARGIN = 16;
-
-    // Get current scale and dimensions
-    function getNorthScale() {
-      return parseFloat(getComputedStyle(document.documentElement)
-        .getPropertyValue('--north-scale')) || 1;
-    }
-
-    function getNorthDimensions() {
-      const scale = getNorthScale();
-      return {
-        width: NP_BASE_W * scale,
-        height: NP_BASE_H * scale
-      };
-    }
-
-    function applyNorthPos(right, bottom) {
-      // Clamp within viewport so NP can never be dragged off-screen
-      const { width, height } = getNorthDimensions();
-      const vw = northVP ? northVP.clientWidth  : window.innerWidth;
-      const vh = northVP ? northVP.clientHeight : window.innerHeight;
-      right  = Math.max(0, Math.min(vw  - width,  right));
-      bottom = Math.max(0, Math.min(vh  - height, bottom));
-
-      northEl.style.right  = right + 'px';
-      northEl.style.bottom = bottom + 'px';
-      northEl.style.left   = '';
-      northEl.style.top    = '';
-
-      try {
-        localStorage.setItem(NP_KEY, JSON.stringify({ right, bottom }));
-      } catch {}
-    }
-
-    function resetNorthPos() {
-      // Original default position
-      northEl.style.right  = NP_MARGIN + 'px';
-      northEl.style.bottom = NP_MARGIN + 'px';
-      northEl.style.left   = '';
-      northEl.style.top    = '';
-      try { localStorage.removeItem(NP_KEY); } catch {}
-    }
-
-    function toggleNorthPoint() {
-      if (northEl) northEl.style.display = northEl.style.display === 'none' ? '' : 'none';
-    }
-
-    // Restore saved scale
-    function restoreNorthScale() {
-      try {
-        const savedScale = localStorage.getItem(NP_SCALE_KEY);
-        if (savedScale) {
-          const scale = Math.max(0.5, Math.min(3, parseFloat(savedScale)));
-          document.documentElement.style.setProperty('--north-scale', scale);
-        }
-      } catch {}
-    }
-
-    // Selection and interaction states
-    let isDragging = false;
-    let dragPending = false;  // pointerdown received, waiting for threshold
-    let dragStartClient = { x: 0, y: 0 };  // client coords at pointerdown
-    const DRAG_THRESHOLD = 5;  // px — must move this far before drag starts
-    let isResizing = false;
-    let dragOffset = { x: 0, y: 0 };
-    let resizeHandle = null;
-    let resizeStart = { scale: 1, mousePos: { x: 0, y: 0 }, center: { x: 0, y: 0 } };
-
-    // Click to select/deselect the icon
-    northEl.addEventListener('click', (e) => {
-      // Don't select if clicking on a resize handle
-      if (e.target.classList.contains('resize-handle')) return;
-      
-      // Toggle selection
-      if (northEl.classList.contains('selected')) {
-        northEl.classList.remove('selected');
-      } else {
-        // Deselect other elements
-        document.querySelectorAll('.selected').forEach(el => {
-          el.classList.remove('selected');
-        });
-        northEl.classList.add('selected');
-      }
-    });
-
-    // Click outside to deselect
-    document.addEventListener('click', (e) => {
-      if (!northEl.contains(e.target)) {
-        northEl.classList.remove('selected');
-      }
-    });
-
-    // Resize handle event listeners
-    document.querySelectorAll('.resize-handle').forEach(handle => {
-      handle.addEventListener('pointerdown', startResize);
-    });
-
-    function startResize(e) {
-      e.preventDefault();
-      e.stopPropagation();
-      
-      isResizing = true;
-      resizeHandle = e.target.dataset.handle;
-      resizeStart.mousePos = { x: e.clientX, y: e.clientY };
-      resizeStart.scale = getNorthScale();
-      
-      // Get current center
-      const rect = northEl.getBoundingClientRect();
-      const viewportRect = northVP.getBoundingClientRect();
-      resizeStart.center = {
-        x: rect.left + rect.width / 2 - viewportRect.left,
-        y: rect.top + rect.height / 2 - viewportRect.top
-      };
-      
-      // Add visual feedback
-      northEl.classList.add('resizing');
-      northEl.setPointerCapture(e.pointerId);
-    }
-
-    function handleResize(e) {
-      if (!isResizing) return;
-      
-      const deltaX = e.clientX - resizeStart.mousePos.x;
-      const deltaY = e.clientY - resizeStart.mousePos.y;
-      
-      // Calculate scale based on handle movement
-      let scaleMultiplier = 1;
-      
-      switch(resizeHandle) {
-        case 'se': // Bottom-right
-          scaleMultiplier = 1 + (deltaX + deltaY) / 200;
-          break;
-        case 'nw': // Top-left
-          scaleMultiplier = 1 - (deltaX + deltaY) / 200;
-          break;
-        case 'ne': // Top-right
-          scaleMultiplier = 1 + (deltaX - deltaY) / 200;
-          break;
-        case 'sw': // Bottom-left
-          scaleMultiplier = 1 - (deltaX - deltaY) / 200;
-          break;
-      }
-      
-      let newScale = resizeStart.scale * scaleMultiplier;
-      
-      // Apply viewport constraints
-      newScale = applyViewportConstraints(newScale);
-      
-      // Apply the new scale
-      document.documentElement.style.setProperty('--north-scale', newScale);
-      
-      // Update position to keep center fixed
-      updateCenteredPosition(newScale);
-    }
-
-    function applyViewportConstraints(scale) {
-      const viewportRect = northVP.getBoundingClientRect();
-      const iconWidth = NP_BASE_W * scale;
-      const iconHeight = NP_BASE_H * scale;
-      
-      // Ensure icon fits within viewport with minimum margin
-      const minMargin = 20;
-      const maxScaleWidth = (viewportRect.width - minMargin * 2) / NP_BASE_W;
-      const maxScaleHeight = (viewportRect.height - minMargin * 2) / NP_BASE_H;
-      const maxScale = Math.min(maxScaleWidth, maxScaleHeight, 3); // Max 300%
-      
-      const minScale = 0.5; // Minimum 50%
-      
-      return Math.max(minScale, Math.min(maxScale, scale));
-    }
-
-    function updateCenteredPosition(scale) {
-      const newWidth = NP_BASE_W * scale;
-      const newHeight = NP_BASE_H * scale;
-      
-      const newLeft = resizeStart.center.x - newWidth / 2;
-      const newTop = resizeStart.center.y - newHeight / 2;
-      
-      // Apply position
-      northEl.style.left = newLeft + 'px';
-      northEl.style.top = newTop + 'px';
-      northEl.style.right = '';
-      northEl.style.bottom = '';
-    }
-
-    function stopResize() {
-      if (!isResizing) return;
-
-      isResizing = false;
-      resizeHandle = null;
-      northEl.classList.remove('resizing');
-
-      // Save scale
-      const currentScale = getNorthScale();
-      try { localStorage.setItem(NP_SCALE_KEY, currentScale.toString()); } catch {}
-
-      // Convert left/top (used during resize) back to right/bottom and save position
-      const rect = northEl.getBoundingClientRect();
-      const vpRect = northVP ? northVP.getBoundingClientRect() : { left: 0, top: 0 };
-      const vw = northVP ? northVP.clientWidth  : window.innerWidth;
-      const vh = northVP ? northVP.clientHeight : window.innerHeight;
-      const right  = vw - (rect.right  - vpRect.left);
-      const bottom = vh - (rect.bottom - vpRect.top);
-      applyNorthPos(right, bottom);
-    }
-
-    // Drag functionality
-    northEl.addEventListener('pointerdown', (e) => {
-      // Don't drag if clicking on resize handle or if resizing
-      if (e.target.classList.contains('resize-handle') || isResizing) return;
-      if (e.button !== 0) return;
-
-      // Record start position — actual drag starts only after DRAG_THRESHOLD is exceeded
-      dragPending = true;
-      dragStartClient = { x: e.clientX, y: e.clientY };
-
-      const rect = northEl.getBoundingClientRect();
-      const viewportRect = northVP ? northVP.getBoundingClientRect() : { left: 0, top: 0 };
-
-      // Offset = distance from mouse to element's right/bottom edge (viewport-relative)
-      const mouseX = e.clientX - viewportRect.left;
-      const mouseY = e.clientY - viewportRect.top;
-      const elementRight  = rect.right  - viewportRect.left;
-      const elementBottom = rect.bottom - viewportRect.top;
-      dragOffset = {
-        x: elementRight  - mouseX,
-        y: elementBottom - mouseY
-      };
-
-      northEl.setPointerCapture(e.pointerId);
-      e.stopPropagation();
-    });
-
-    function handleDrag(e) {
-      if (!dragPending && !isDragging) return;
-
-      // Activate drag only after threshold is exceeded — this prevents clicks from triggering drag
-      if (!isDragging) {
-        const dist = Math.hypot(e.clientX - dragStartClient.x, e.clientY - dragStartClient.y);
-        if (dist < DRAG_THRESHOLD) return;
-        isDragging = true;
-        northEl.style.cursor = 'grabbing';
-      }
-
-      const viewportRect = northVP ? northVP.getBoundingClientRect() : { left: 0, top: 0 };
-      const vw = northVP ? northVP.clientWidth  : window.innerWidth;
-      const vh = northVP ? northVP.clientHeight : window.innerHeight;
-
-      // right/bottom = viewport edge minus (mouse + drag offset restores original gap)
-      const mouseX = e.clientX - viewportRect.left;
-      const mouseY = e.clientY - viewportRect.top;
-      const right  = vw - (mouseX + dragOffset.x);
-      const bottom = vh - (mouseY + dragOffset.y);
-
-      applyNorthPos(right, bottom);
-    }
-
-    function stopDrag() {
-      dragPending = false;
-      if (!isDragging) return;
-      isDragging = false;
-      northEl.style.cursor = 'grab';
-    }
-
-    // Global event listeners
-    document.addEventListener('pointermove', (e) => {
-      handleResize(e);
-      handleDrag(e);
-    });
-
-    document.addEventListener('pointerup', () => {
-      stopResize();
-      stopDrag();
-    });
-
-    // Context menu
-    northEl.addEventListener('contextmenu', e => {
-      e.preventDefault();
-      e.stopPropagation();
-      if (northCtx) {
-        northCtx.style.left    = e.clientX + 'px';
-        northCtx.style.top     = e.clientY + 'px';
-        northCtx.style.display = 'block';
-      }
-    });
-
-    document.addEventListener('click', e => {
-      if (northCtx && !northCtx.contains(e.target)) northCtx.style.display = 'none';
-    });
-
-    document.getElementById('north-ctx-reset')?.addEventListener('click', () => {
-      resetNorthPos(); 
-      if (northCtx) northCtx.style.display = 'none';
-    });
-
-    document.getElementById('north-ctx-hide')?.addEventListener('click', () => {
-      if (northEl) northEl.style.display = 'none';
-      if (northCtx) northCtx.style.display = 'none';
-    });
-
-    // Initialize
-    restoreNorthScale();
-
-    // Restore saved position or default
-    if (northEl) {
-      try {
-        const saved = JSON.parse(localStorage.getItem(NP_KEY));
-        if (saved?.right !== undefined && saved?.bottom !== undefined) { 
-          applyNorthPos(saved.right, saved.bottom); 
-        } else if (saved?.left > 0 && saved?.top > 0) { 
-          // Handle old left/top format - convert to right/bottom
-          const vw = northVP ? northVP.clientWidth : window.innerWidth;
-          const vh = northVP ? northVP.clientHeight : window.innerHeight;
-          const right = vw - saved.left - NP_BASE_W;
-          const bottom = vh - saved.top - NP_BASE_H;
-          applyNorthPos(right, bottom);
-        } else { 
-          resetNorthPos(); 
-        }
-      } catch { 
-        resetNorthPos(); 
-      }
-    }
-
-    // Compass rotation — called each animation frame
-    function updateNorthRotation() {
-      if (!northEl || northEl.style.display === 'none') return;
-      const cam    = (currentMode === '3d') ? camera3D : camera2D;
-      const target = (currentMode === '3d')
-        ? controls3D.target
-        : new THREE.Vector3(pan2D.x, 0, pan2D.z);
-      _npO.copy(target).project(cam);
-      _npN.copy(target).add(new THREE.Vector3(0, 0, -500)).project(cam);
-      const deg = Math.atan2(_npN.x - _npO.x, _npN.y - _npO.y) * 180 / Math.PI;
-      northEl.style.transform = `rotate(${deg}deg)`;
-    }
+    initNorthPoint2D(() => ({ currentMode, camera2D, camera3D, controls3D, pan2D }));
 
     showFeedback('GPRTool ready', 2000);
   </script>

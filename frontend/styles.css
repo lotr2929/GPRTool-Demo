@@ -50,10 +50,7 @@
   --fs-sm:   11px;
   --fs-xs:   10px;
 
-  /* North Point scaling */
-  --north-scale: 1;
-  --north-base-width: 77px;
-  --north-base-height: 86px;
+
 }
 
 /* ============================================================
@@ -1010,28 +1007,39 @@ body {
 }
 
 /* ============================================================
-   NORTH POINT - SCALABLE WITH RESIZE HANDLES
+   NORTH POINT 2D
+   #np-container : position + size only — NEVER has transform
+   #np-rotator   : rotation only — NEVER has position/size
    ============================================================ */
-#north-point {
+#np-container {
   position: absolute;
-  width: calc(var(--north-base-width) * var(--north-scale));
-  height: calc(var(--north-base-height) * var(--north-scale));
+  right: 16px;        /* JS overrides this on init */
+  bottom: 16px;
+  width: 77px;        /* JS sets width/height directly in px */
+  height: 86px;
   cursor: grab;
   z-index: 500;
   user-select: none;
-  filter: drop-shadow(0 2px 5px rgba(0,0,0,0.28));
   touch-action: none;
-  transition: outline 0.2s;
+  filter: drop-shadow(0 2px 5px rgba(0,0,0,0.28));
 }
 
-#north-point:active { cursor: grabbing; }
+#np-container:active { cursor: grabbing; }
 
-#north-point.selected {
+#np-rotator {
+  width: 100%;
+  height: 100%;
+  transform-origin: center center;
+  /* JS writes transform: rotate() here only */
+}
+
+#np-container.np-selected,
+#np-container.np-resizing {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
 
-/* Resize handles */
+/* Resize handles — on container, always in layout space */
 .resize-handle {
   display: none;
   position: absolute;
@@ -1044,43 +1052,35 @@ body {
   transition: opacity 0.2s, transform 0.2s;
 }
 
-#north-point.selected .resize-handle {
-  display: block;
+#np-container.np-selected .resize-handle { display: block; }
+
+.resize-handle:hover { opacity: 1; transform: scale(1.2); }
+
+.resize-handle.nw { top: -4px;    left: -4px;  cursor: nw-resize; }
+.resize-handle.ne { top: -4px;    right: -4px; cursor: ne-resize; }
+.resize-handle.sw { bottom: -4px; left: -4px;  cursor: sw-resize; }
+.resize-handle.se { bottom: -4px; right: -4px; cursor: se-resize; }
+
+/* North Point context menu */
+#np-ctx-menu {
+  position: fixed;
+  background: var(--chrome-panel);
+  border: 1px solid var(--chrome-border);
+  border-radius: 4px;
+  padding: 4px 0;
+  z-index: 600;
+  font-size: 12px;
+  min-width: 195px;
+  box-shadow: 0 4px 14px rgba(0,0,0,0.18);
 }
 
-.resize-handle:hover {
-  opacity: 1;
-  transform: scale(1.2);
+#np-ctx-menu div {
+  padding: 6px 14px;
+  cursor: pointer;
+  color: var(--text-primary);
 }
 
-.resize-handle.nw { 
-  top: -4px; 
-  left: -4px; 
-  cursor: nw-resize; 
-}
-
-.resize-handle.ne { 
-  top: -4px; 
-  right: -4px; 
-  cursor: ne-resize; 
-}
-
-.resize-handle.sw { 
-  bottom: -4px; 
-  left: -4px; 
-  cursor: sw-resize; 
-}
-
-.resize-handle.se { 
-  bottom: -4px; 
-  right: -4px; 
-  cursor: se-resize; 
-}
-
-#north-point.resizing {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
-}
+#np-ctx-menu div:hover { background: var(--chrome-hover); }
 
 /* ============================================================
    UTILITY

@@ -41,7 +41,8 @@ GPRTool-Demo/
 │   ├── server.py               ← Local dev server (Python http.server, port 8000)
 │   ├── js/
 │   │   ├── three.module.js     ← Three.js r160 (local copy, 1.2 MB)
-│   │   └── OrbitControls.js    ← Three.js orbit controls (local copy)
+│   │   ├── OrbitControls.js    ← Three.js orbit controls (local copy)
+│   │   └── north-point-2d.js  ← 2D DOM compass widget (extracted 2026-03-29)
 │   ├── textures/
 │   │   └── plywood.webp        ← Texture used by placeholder cube (unused in prod)
 │   └── images/
@@ -113,7 +114,8 @@ GPRTool-Demo/
 
 | File | What it does | Edit when |
 |---|---|---|
-| `frontend/index.html` | The entire app — Three.js scene, UI logic, GPR engine, plant library, GeoJSON import, OBJ/glTF import | Every feature build |
+| `frontend/index.html` | App shell — Three.js scene, UI logic, GPR engine, plant library, GeoJSON import, OBJ/glTF import (NP extracted) | Every feature build |
+| `frontend/js/north-point-2d.js` | 2D DOM north point compass — drag, resize, rotation, persist | North point changes only |
 | `frontend/body.html` | Left panel buttons, viewport canvas, right panel sections | Adding new UI panels or buttons |
 | `frontend/header.html` | Top bar, File/Edit menus, clock | Adding menu items |
 | `frontend/styles.css` | All CSS variables, component styles | Visual changes |
@@ -122,6 +124,7 @@ GPRTool-Demo/
 | `_journal.md` | Session log — what was built, decisions made, what's pending | Every session |
 | `_session.md` | Current status snapshot — where we are, what's next | Every session |
 | `_design.md` | Architecture decisions, UI spec, workflow definitions | Major design changes |
+| `_dev_guide.md` | Developer rules for AI and human contributors — module structure, tool architecture, CSS/DOM/Three.js conventions | When new patterns are established |
 | `deploy.bat` | Commit and push to GitHub (triggers Vercel deploy) | Every deploy |
 
 ---
