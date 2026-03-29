@@ -21,6 +21,51 @@
 
 ---
 
+### 2026-03-28 (Session 6 — Site alignment, map tiles, axes, north point, deploy polling)
+
+#### What was done
+
+**Site boundary alignment**
+- `shapeGeom.rotateX(-Math.PI/2)` → `+Math.PI/2` — the filled site polygon was mirrored from the outline due to the negative rotation
+
+**Map tile overlay**
+- CARTO Light basemap tiles load automatically on GeoJSON import at zoom 18
+- Tile placement corrected from equirectangular to Mercator Y projection (Perth latitude ~32°S causes ~18% stretch without correction)
+- `mercatorY()` helper added; `loadOneTile()` uses Mercator Z coordinates
+- "Map Overlay" toggle added to Site Boundary section in right panel
+- `clearMapTiles()` called on site clear
+
+**Axes overhaul**
+- `axesYLine` (green, vertical Y) added separately from X/Z
+- Y hidden in 2D plan mode, shown in 3D mode
+- `toggleAxes()` wired to Ctrl+T keyboard shortcut and View > Toggle Axes menu item
+
+**North Point compass**
+- SVG compass needle designed iteratively with Boon over ~15 preview rounds
+- Final needle points: north `32,20 32,40 42,43` (black fill), south `32,60 32,40 22,37` (open outline)
+- Circle cx=32 cy=40 r=22, crosshair ticks at cardinal points, N label above
+- Size: 77×86px (64×72 base ×1.2)
+- Placed inside `#viewport` as `position:absolute` — eliminates `position:fixed` ancestor-transform bug
+- Default position: `right:16px; bottom:16px` set in HTML inline style (no JS needed at load)
+- Drag: pointer events calculate offset relative to viewport `getBoundingClientRect()`
+- Position clamped to viewport dimensions; saved to localStorage key `gprtool-north-pos-v3`
+- Reset restores `right/bottom` CSS and removes localStorage entry
+- Right-click context menu: Reset to Default Position / Hide North Point
+- View menu: North Pointer toggle + Reset North Point Position
+- `updateNorthRotation()` called every animation frame; projects world north direction (0,0,-500) through camera to get screen bearing
+
+**deploy.bat overhaul**
+- `deploy.env` created with GPRTool credentials (project ID `prj_oioZB5jSKFHb99IZcSxZutIcjufi`, team ID `team_HOoYAXfWxiVyXa3jQ6ieKaGE`)
+- `poll_vercel.ps1` copied from Mobius pattern — captures baseline UID before push, polls for new deployment, reports READY/ERROR with elapsed timer
+- `deploy.env` added to `.gitignore`
+
+#### Known issues / pending verification
+- Map tile alignment needs visual check — Mercator fix applied but not yet confirmed in browser
+- North point rotation accuracy not yet verified with loaded site
+- Axes in 2D surface canvas mode not explicitly tested
+
+---
+
 ### 2026-03-26 (Session 5 — Repo cleanup, site research, import format decisions)
 
 #### What was done

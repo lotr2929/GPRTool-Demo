@@ -3056,25 +3056,45 @@
     }
 
     /* ============================================================
-       NORTH POINT
+       NORTH POINT - SCALABLE WITH RESIZE HANDLES
     ============================================================ */
     const NP_KEY  = 'gprtool-north-pos-v3';  // v3: absolute inside viewport
-    const NP_W = 77, NP_H = 86, NP_MARGIN = 16;
+    const NP_SCALE_KEY = 'gprtool-north-scale-v1';
+    const NP_BASE_W = 77, NP_BASE_H = 86, NP_MARGIN = 16;
     const northEl  = document.getElementById('north-point');
     const northCtx = document.getElementById('north-ctx-menu');
     const northVP  = document.getElementById('viewport'); // containing block
 
+    // Get current scale and dimensions
+    function getNorthScale() {
+      return parseFloat(getComputedStyle(document.documentElement)
+        .getPropertyValue('--north-scale')) || 1;
+    }
+
+    function getNorthDimensions() {
+      const scale = getNorthScale();
+      return {
+        width: NP_BASE_W * scale,
+        height: NP_BASE_H * scale
+      };
+    }
+
     function applyNorthPos(left, top) {
       const vw = northVP ? northVP.clientWidth  : window.innerWidth;
       const vh = northVP ? northVP.clientHeight : window.innerHeight;
-      left = Math.max(0, Math.min(vw - NP_W, left));
-      top  = Math.max(0, Math.min(vh - NP_H, top));
+      const { width, height } = getNorthDimensions();
+      
+      left = Math.max(0, Math.min(vw - width, left));
+      top  = Math.max(0, Math.min(vh - height, top));
+      
       northEl.style.left   = left + 'px';
       northEl.style.top    = top  + 'px';
       northEl.style.right  = '';
       northEl.style.bottom = '';
+      
       try { localStorage.setItem(NP_KEY, JSON.stringify({ left, top })); } catch {}
     }
+
     function resetNorthPos() {
       northEl.style.left   = '';
       northEl.style.top    = '';
@@ -3082,56 +3102,248 @@
       northEl.style.bottom = NP_MARGIN + 'px';
       try { localStorage.removeItem(NP_KEY); } catch {}
     }
+
     function toggleNorthPoint() {
       if (northEl) northEl.style.display = northEl.style.display === 'none' ? '' : 'none';
     }
+
+    // Restore saved scale
+    function restoreNorthScale() {
+      try {
+        const savedScale = localStorage.getItem(NP_SCALE_KEY);
+        if (savedScale) {
+          const scale = Math.max(0.5, Math.min(3, parseFloat(savedScale)));
+          document.documentElement.style.setProperty('--north-scale', scale);
+        }
+      } catch {}
+    }
+
+    // Selection and interaction states
+    let isDragging = false;
+    let isResizing = false;
+    let dragOffset = { x: 0, y: 0 };
+    let resizeHandle = null;
+    let resizeStart = { scale: 1, mousePos: { x: 0, y: 0 }, center: { x: 0, y: 0 } };
+
+    // Click to select/deselect the icon
+    northEl.addEventListener('click', (e) => {
+      // Don't select if clicking on a resize handle
+      if (e.target.classList.contains('resize-handle')) return;
+      
+      // Toggle selection
+      if (northEl.classList.contains('selected')) {
+        northEl.classList.remove('selected');
+      } else {
+        // Deselect other elements
+        document.querySelectorAll('.selected').forEach(el => {
+          el.classList.remove('selected');
+        });
+        northEl.classList.add('selected');
+      }
+    });
+
+    // Click outside to deselect
+    document.addEventListener('click', (e) => {
+      if (!northEl.contains(e.target)) {
+        northEl.classList.remove('selected');
+      }
+    });
+
+    // Resize handle event listeners
+    document.querySelectorAll('.resize-handle').forEach(handle => {
+      handle.addEventListener('pointerdown', startResize);
+    });
+
+    function startResize(e) {
+      e.preventDefault();
+      e.stopPropagation();
+      
+      isResizing = true;
+      resizeHandle = e.target.dataset.handle;
+      resizeStart.mousePos = { x: e.clientX, y: e.clientY };
+      resizeStart.scale = getNorthScale();
+      
+      // Get current center
+      const rect = northEl.getBoundingClientRect();
+      const viewportRect = northVP.getBoundingClientRect();
+      resizeStart.center = {
+        x: rect.left + rect.width / 2 - viewportRect.left,
+        y: rect.top + rect.height / 2 - viewportRect.top
+      };
+      
+      // Add visual feedback
+      northEl.classList.add('resizing');
+      northEl.setPointerCapture(e.pointerId);
+    }
+
+    function handleResize(e) {
+      if (!isResizing) return;
+      
+      const deltaX = e.clientX - resizeStart.mousePos.x;
+      const deltaY = e.clientY - resizeStart.mousePos.y;
+      
+      // Calculate scale based on handle movement
+      let scaleMultiplier = 1;
+      
+      switch(resizeHandle) {
+        case 'se': // Bottom-right
+          scaleMultiplier = 1 + (deltaX + deltaY) / 200;
+          break;
+        case 'nw': // Top-left
+          scaleMultiplier = 1 - (deltaX + deltaY) / 200;
+          break;
+        case 'ne': // Top-right
+          scaleMultiplier = 1 + (deltaX - deltaY) / 200;
+          break;
+        case 'sw': // Bottom-left
+          scaleMultiplier = 1 - (deltaX - deltaY) / 200;
+          break;
+      }
+      
+      let newScale = resizeStart.scale * scaleMultiplier;
+      
+      // Apply viewport constraints
+      newScale = applyViewportConstraints(newScale);
+      
+      // Apply the new scale
+      document.documentElement.style.setProperty('--north-scale', newScale);
+      
+      // Update position to keep center fixed
+      updateCenteredPosition(newScale);
+    }
+
+    function applyViewportConstraints(scale) {
+      const viewportRect = northVP.getBoundingClientRect();
+      const iconWidth = NP_BASE_W * scale;
+      const iconHeight = NP_BASE_H * scale;
+      
+      // Ensure icon fits within viewport with minimum margin
+      const minMargin = 20;
+      const maxScaleWidth = (viewportRect.width - minMargin * 2) / NP_BASE_W;
+      const maxScaleHeight = (viewportRect.height - minMargin * 2) / NP_BASE_H;
+      const maxScale = Math.min(maxScaleWidth, maxScaleHeight, 3); // Max 300%
+      
+      const minScale = 0.5; // Minimum 50%
+      
+      return Math.max(minScale, Math.min(maxScale, scale));
+    }
+
+    function updateCenteredPosition(scale) {
+      const newWidth = NP_BASE_W * scale;
+      const newHeight = NP_BASE_H * scale;
+      
+      const newLeft = resizeStart.center.x - newWidth / 2;
+      const newTop = resizeStart.center.y - newHeight / 2;
+      
+      // Apply position
+      northEl.style.left = newLeft + 'px';
+      northEl.style.top = newTop + 'px';
+      northEl.style.right = '';
+      northEl.style.bottom = '';
+    }
+
+    function stopResize() {
+      if (!isResizing) return;
+      
+      isResizing = false;
+      resizeHandle = null;
+      
+      // Remove visual feedback
+      northEl.classList.remove('resizing');
+      
+      // Save scale preference
+      const currentScale = getNorthScale();
+      try { localStorage.setItem(NP_SCALE_KEY, currentScale.toString()); } catch {}
+    }
+
+    // Drag functionality
+    northEl.addEventListener('pointerdown', (e) => {
+      // Don't drag if clicking on resize handle or if resizing
+      if (e.target.classList.contains('resize-handle') || isResizing) return;
+      if (e.button !== 0) return;
+      
+      isDragging = true;
+      const rect = northEl.getBoundingClientRect();
+      dragOffset = {
+        x: e.clientX - rect.left,
+        y: e.clientY - rect.top
+      };
+      
+      northEl.setPointerCapture(e.pointerId);
+      northEl.style.cursor = 'grabbing';
+      e.stopPropagation();
+      e.preventDefault();
+    });
+
+    function handleDrag(e) {
+      if (!isDragging) return;
+      
+      const viewportRect = northVP ? northVP.getBoundingClientRect() : { left: 0, top: 0 };
+      const newLeft = e.clientX - dragOffset.x - viewportRect.left;
+      const newTop = e.clientY - dragOffset.y - viewportRect.top;
+      
+      applyNorthPos(newLeft, newTop);
+    }
+
+    function stopDrag() {
+      if (!isDragging) return;
+      
+      isDragging = false;
+      northEl.style.cursor = 'grab';
+    }
+
+    // Global event listeners
+    document.addEventListener('pointermove', (e) => {
+      handleResize(e);
+      handleDrag(e);
+    });
+
+    document.addEventListener('pointerup', () => {
+      stopResize();
+      stopDrag();
+    });
+
+    // Context menu
+    northEl.addEventListener('contextmenu', e => {
+      e.preventDefault();
+      e.stopPropagation();
+      if (northCtx) {
+        northCtx.style.left    = e.clientX + 'px';
+        northCtx.style.top     = e.clientY + 'px';
+        northCtx.style.display = 'block';
+      }
+    });
+
+    document.addEventListener('click', e => {
+      if (northCtx && !northCtx.contains(e.target)) northCtx.style.display = 'none';
+    });
+
+    document.getElementById('north-ctx-reset')?.addEventListener('click', () => {
+      resetNorthPos(); 
+      if (northCtx) northCtx.style.display = 'none';
+    });
+
+    document.getElementById('north-ctx-hide')?.addEventListener('click', () => {
+      if (northEl) northEl.style.display = 'none';
+      if (northCtx) northCtx.style.display = 'none';
+    });
+
+    // Initialize
+    restoreNorthScale();
 
     // Restore saved position or default
     if (northEl) {
       try {
         const saved = JSON.parse(localStorage.getItem(NP_KEY));
-        if (saved?.left > 0 && saved?.top > 0) { applyNorthPos(saved.left, saved.top); }
-        else resetNorthPos();
-      } catch { resetNorthPos(); }
-
-      // Drag — offset relative to viewport
-      let _npDrag = false, _npOff = { x: 0, y: 0 };
-      northEl.addEventListener('pointerdown', e => {
-        if (e.button !== 0) return;
-        _npDrag = true;
-        const r  = northEl.getBoundingClientRect();
-        _npOff   = { x: e.clientX - r.left, y: e.clientY - r.top };
-        northEl.setPointerCapture(e.pointerId);
-        northEl.style.cursor = 'grabbing';
-        e.stopPropagation(); e.preventDefault();
-      });
-      document.addEventListener('pointermove', e => {
-        if (!_npDrag) return;
-        const vr = northVP ? northVP.getBoundingClientRect() : { left: 0, top: 0 };
-        applyNorthPos(e.clientX - _npOff.x - vr.left, e.clientY - _npOff.y - vr.top);
-      });
-      document.addEventListener('pointerup', () => {
-        if (_npDrag) { _npDrag = false; northEl.style.cursor = 'grab'; }
-      });
-      northEl.addEventListener('contextmenu', e => {
-        e.preventDefault(); e.stopPropagation();
-        if (northCtx) {
-          northCtx.style.left    = e.clientX + 'px';
-          northCtx.style.top     = e.clientY + 'px';
-          northCtx.style.display = 'block';
+        if (saved?.left > 0 && saved?.top > 0) { 
+          applyNorthPos(saved.left, saved.top); 
+        } else { 
+          resetNorthPos(); 
         }
-      });
+      } catch { 
+        resetNorthPos(); 
+      }
     }
-    document.addEventListener('click', e => {
-      if (northCtx && !northCtx.contains(e.target)) northCtx.style.display = 'none';
-    });
-    document.getElementById('north-ctx-reset')?.addEventListener('click', () => {
-      resetNorthPos(); if (northCtx) northCtx.style.display = 'none';
-    });
-    document.getElementById('north-ctx-hide')?.addEventListener('click', () => {
-      if (northEl) northEl.style.display = 'none';
-      if (northCtx) northCtx.style.display = 'none';
-    });
 
     // Compass rotation — called each animation frame
     const _npO = new THREE.Vector3(), _npN = new THREE.Vector3();

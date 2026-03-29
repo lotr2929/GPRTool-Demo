@@ -1005,6 +1005,85 @@ body {
 }
 
 /* ============================================================
+   NORTH POINT - SCALABLE WITH RESIZE HANDLES
+   ============================================================ */
+:root {
+  --north-scale: 1;
+  --north-base-width: 77px;
+  --north-base-height: 86px;
+}
+
+#north-point {
+  position: absolute;
+  width: calc(var(--north-base-width) * var(--north-scale));
+  height: calc(var(--north-base-height) * var(--north-scale));
+  cursor: grab;
+  z-index: 500;
+  user-select: none;
+  filter: drop-shadow(0 2px 5px rgba(0,0,0,0.28));
+  touch-action: none;
+  transition: outline 0.2s;
+}
+
+#north-point:active { cursor: grabbing; }
+
+#north-point.selected {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* Resize handles */
+.resize-handle {
+  display: none;
+  position: absolute;
+  width: 8px;
+  height: 8px;
+  background: var(--accent);
+  border: 2px solid white;
+  border-radius: 2px;
+  opacity: 0.9;
+  transition: opacity 0.2s, transform 0.2s;
+}
+
+#north-point.selected .resize-handle {
+  display: block;
+}
+
+.resize-handle:hover {
+  opacity: 1;
+  transform: scale(1.2);
+}
+
+.resize-handle.nw { 
+  top: -4px; 
+  left: -4px; 
+  cursor: nw-resize; 
+}
+
+.resize-handle.ne { 
+  top: -4px; 
+  right: -4px; 
+  cursor: ne-resize; 
+}
+
+.resize-handle.sw { 
+  bottom: -4px; 
+  left: -4px; 
+  cursor: sw-resize; 
+}
+
+.resize-handle.se { 
+  bottom: -4px; 
+  right: -4px; 
+  cursor: se-resize; 
+}
+
+#north-point.resizing {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* ============================================================
    UTILITY
    ============================================================ */
 .hidden   { display: none !important; }
