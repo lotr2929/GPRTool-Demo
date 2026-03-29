@@ -339,6 +339,12 @@
       if (ctrl && !e.shiftKey && e.key === 'z') { e.preventDefault(); showFeedback('Undo — coming soon'); }
       if (ctrl &&  e.shiftKey && e.key === 'Z') { e.preventDefault(); showFeedback('Redo — coming soon'); }
       if (e.key === 'Escape') { deselectSurface(); showFeedback('Ready'); }
+      // N = orient view to north (rotate2D = 0)
+      if ((e.key === 'n' || e.key === 'N') && !ctrl && currentMode === '2d') {
+        rotate2D = 0;
+        update2DCamera();
+        showFeedback('View oriented to North');
+      }
     });
 
     /* ============================================================
@@ -434,27 +440,51 @@
     let pan2DActive = false;
     let pan2DLast   = { x: 0, y: 0 };
 
+    let rotate2D       = 0;           // radians — 2D view rotation around world Y axis
+    let rotate2DActive = false;
+    let rotate2DLast   = { x: 0, y: 0 };
+
     renderer.domElement.addEventListener('pointerdown', e => {
       if (currentMode !== '2d') return;
-      pan2DActive = true;
-      pan2DLast   = { x: e.clientX, y: e.clientY };
-      renderer.domElement.setPointerCapture(e.pointerId);
+      if (e.button === 1) {
+        // Middle mouse — rotate the 2D view (not in surface canvas mode)
+        if (selectedSurface) return;
+        e.preventDefault();
+        rotate2DActive = true;
+        rotate2DLast   = { x: e.clientX, y: e.clientY };
+        renderer.domElement.setPointerCapture(e.pointerId);
+      } else if (e.button === 0) {
+        // Left mouse — pan
+        pan2DActive = true;
+        pan2DLast   = { x: e.clientX, y: e.clientY };
+        renderer.domElement.setPointerCapture(e.pointerId);
+      }
     });
 
     renderer.domElement.addEventListener('pointermove', e => {
-      if (currentMode !== '2d' || !pan2DActive) return;
+      if (currentMode !== '2d') return;
+
+      if (rotate2DActive) {
+        const dx = e.clientX - rotate2DLast.x;
+        rotate2DLast = { x: e.clientX, y: e.clientY };
+        // Dragging full viewport width = PI radians of rotation
+        rotate2D += dx * (Math.PI / container.clientWidth);
+        update2DCamera();
+        return;
+      }
+
+      if (!pan2DActive) return;
       const dx = e.clientX - pan2DLast.x;
       const dy = e.clientY - pan2DLast.y;
       pan2DLast = { x: e.clientX, y: e.clientY };
 
       if (selectedSurface && camera2D.userData.surfaceCentre) {
-        // Surface canvas mode: pan along surface U/V axes
+        // Surface canvas mode: pan along surface U/V axes (no rotate2D here)
         const frustumW = (camera2D.right - camera2D.left) / camera2D.zoom;
         const frustumH = (camera2D.top - camera2D.bottom) / camera2D.zoom;
         const scaleX   = frustumW / container.clientWidth;
         const scaleY   = frustumH / container.clientHeight;
 
-        // Right axis = cross(up, normal); Up axis = camera up
         const n    = camera2D.userData.surfaceNormal.clone();
         const up   = camera2D.userData.surfaceUp.clone();
         const right = new THREE.Vector3().crossVectors(up, n).normalize();
@@ -466,18 +496,24 @@
         );
         camera2D.updateProjectionMatrix();
       } else {
-        // Top-down plan mode
+        // Top-down plan mode — pan is rotation-aware
+        // Screen right in world = (cos(r), 0, sin(r))
+        // Screen down in world  = (sin(r), 0, -cos(r)) reversed for pan direction
         const frustumW = (camera2D.right - camera2D.left) / camera2D.zoom;
         const frustumH = (camera2D.top - camera2D.bottom) / camera2D.zoom;
-        pan2D.x -= (dx / container.clientWidth)  * frustumW;
-        pan2D.z -= (dy / container.clientHeight) * frustumH;
+        const r   = rotate2D;
+        const scX = frustumW / container.clientWidth;
+        const scZ = frustumH / container.clientHeight;
+        pan2D.x -= dx * scX * Math.cos(r) - dy * scZ * Math.sin(r);
+        pan2D.z -= dx * scX * Math.sin(r) + dy * scZ * Math.cos(r);
         update2DCamera();
       }
     });
 
     renderer.domElement.addEventListener('pointerup', e => {
       if (currentMode !== '2d') return;
-      pan2DActive = false;
+      pan2DActive    = false;
+      rotate2DActive = false;
       renderer.domElement.releasePointerCapture(e.pointerId);
     });
 
@@ -503,7 +539,9 @@
       if (currentMode === '2d' && selectedSurface) return;
       camera2D.zoom = zoom2D;
       camera2D.position.set(pan2D.x, 10000, pan2D.z);
-      camera2D.quaternion.setFromEuler(new THREE.Euler(-Math.PI / 2, 0, 0));
+      // up vector encodes the view rotation: rotate2D=0 → north (-Z) points up on screen
+      camera2D.up.set(Math.sin(rotate2D), 0, -Math.cos(rotate2D));
+      camera2D.lookAt(pan2D.x, 0, pan2D.z);
       camera2D.updateProjectionMatrix();
     }
 
@@ -3045,7 +3083,7 @@
     /* ============================================================
        NORTH POINT 2D — initialise module
     ============================================================ */
-    initNorthPoint2D(() => ({ currentMode, camera2D, camera3D, controls3D, pan2D }));
+    initNorthPoint2D(() => ({ currentMode, camera2D, camera3D, controls3D, pan2D, rotate2D }));
 
     showFeedback('GPRTool ready', 2000);
   </script>

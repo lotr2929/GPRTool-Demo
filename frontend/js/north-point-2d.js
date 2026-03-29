@@ -19,18 +19,26 @@
 import * as THREE from 'three';
 
 // ── Constants ────────────────────────────────────────────────
-const NP_KEY        = 'gprtool-np2d-state'; // { right, bottom, w, visible }
-const NP_BASE_W     = 77;
-const NP_BASE_H     = 86;
-const NP_MARGIN     = 16;
+const NP_KEY         = 'gprtool-np2d-state'; // { right, bottom, w, visible, dn }
+const NP_BASE_W      = 77;
+const NP_BASE_H      = 86;
+const NP_MARGIN      = 16;
 const DRAG_THRESHOLD = 5;
-const MIN_W         = 38;   // 50% of base
-const MAX_W         = 231;  // 300% of base
+const MIN_W          = 38;   // 50% of base
+const MAX_W          = 231;  // 300% of base
+
+// SVG geometry constants (viewBox 0 0 64 72)
+const SVG_CX = 32;  // circle centre X
+const SVG_CY = 40;  // circle centre Y
 
 // ── Module state ─────────────────────────────────────────────
 let npEl, npRotEl, npCtxEl, npVP;
-let npW = NP_BASE_W;  // current width in px; height derived from aspect ratio
-let getState;         // () => { currentMode, camera2D, camera3D, controls3D, pan2D }
+let npW = NP_BASE_W;
+let getState;
+
+let designNorthDeg = null;  // null = not set; decimal degrees otherwise (+ve = E/clockwise)
+let dnGroupEl = null;
+let dnLabelEl = null;
 
 let isDragging      = false;
 let dragPending     = false;
@@ -44,7 +52,57 @@ let resizeStart  = { w: NP_BASE_W, anchor: { x: 0, y: 0 } };
 const _npO = new THREE.Vector3();
 const _npN = new THREE.Vector3();
 
-// ── Helpers ──────────────────────────────────────────────────
+// ── Angle parsing ─────────────────────────────────────────────
+// Accepts: 7  -7  +7  7W  7E  7.4  7.4W  7°22'  7°22'W  7d22'E
+// Returns decimal degrees (+ve = east/clockwise) or null on error
+
+function parseNorthAngle(str) {
+  if (!str) return null;
+  str = str.trim();
+
+  // Determine directional sign from suffix or prefix
+  let sign = 1;
+  let s    = str.toUpperCase();
+
+  if (s.endsWith('W'))      { sign = -1; s = s.slice(0, -1).trim(); }
+  else if (s.endsWith('E')) { sign =  1; s = s.slice(0, -1).trim(); }
+
+  if (s.startsWith('-'))      { sign = -1; s = s.slice(1).trim(); }
+  else if (s.startsWith('+')) { sign =  1; s = s.slice(1).trim(); }
+
+  // deg°min' or deg d min — e.g. "7°22'" or "7d22"
+  const dmMatch = s.match(/^(\d+(?:\.\d+)?)[°d]\s*(\d+(?:\.\d+)?)'?\s*$/);
+  if (dmMatch) {
+    const d = parseFloat(dmMatch[1]);
+    const m = parseFloat(dmMatch[2]);
+    if (!isNaN(d) && !isNaN(m) && m < 60) return sign * (d + m / 60);
+    return null;
+  }
+
+  // Plain number (integer or decimal)
+  const num = parseFloat(s);
+  if (!isNaN(num) && s.match(/^[\d.]+$/)) return sign * num;
+
+  return null;
+}
+
+// ── Angle formatting ──────────────────────────────────────────
+// Returns a compact display string, e.g. "7°22' W" or "7° E" or "0°"
+
+function formatNorthAngle(deg) {
+  if (deg === 0 || deg === null) return '0°';
+  const abs     = Math.abs(deg);
+  const dir     = deg > 0 ? 'E' : 'W';
+  const wholeDeg = Math.floor(abs);
+  const minFrac  = (abs - wholeDeg) * 60;
+  const wholeMin = Math.round(minFrac);
+
+  if (wholeMin === 0)  return `${wholeDeg}° ${dir}`;
+  if (wholeMin === 60) return `${wholeDeg + 1}° ${dir}`;
+  return `${wholeDeg}°${wholeMin}' ${dir}`;
+}
+
+// ── Size / position helpers ───────────────────────────────────
 
 function heightFromWidth(w) {
   return Math.round(w * (NP_BASE_H / NP_BASE_W));
@@ -59,7 +117,7 @@ function applySize(w) {
 function applyPos(right, bottom) {
   const vw = npVP.clientWidth;
   const vh = npVP.clientHeight;
-  right  = Math.max(0, Math.min(vw - npW,              right));
+  right  = Math.max(0, Math.min(vw - npW,               right));
   bottom = Math.max(0, Math.min(vh - heightFromWidth(npW), bottom));
   npEl.style.right  = right  + 'px';
   npEl.style.bottom = bottom + 'px';
@@ -68,12 +126,17 @@ function applyPos(right, bottom) {
   saveState();
 }
 
+// ── Persistence ───────────────────────────────────────────────
+
 function saveState() {
   try {
     const right   = parseFloat(npEl.style.right)  || NP_MARGIN;
     const bottom  = parseFloat(npEl.style.bottom) || NP_MARGIN;
     const visible = npEl.style.display !== 'none';
-    localStorage.setItem(NP_KEY, JSON.stringify({ right, bottom, w: npW, visible }));
+    localStorage.setItem(NP_KEY, JSON.stringify({
+      right, bottom, w: npW, visible,
+      dn: designNorthDeg,
+    }));
   } catch {}
 }
 
@@ -81,10 +144,11 @@ function restoreState() {
   try {
     const saved = JSON.parse(localStorage.getItem(NP_KEY));
     if (saved) {
-      if (saved.w)                      applySize(saved.w);
-      if (saved.visible === false)      npEl.style.display = 'none';
-      if (saved.right !== undefined)    applyPos(saved.right, saved.bottom);
-      else                              resetPosInternal();
+      if (saved.w)               applySize(saved.w);
+      if (saved.visible === false) npEl.style.display = 'none';
+      if (saved.right !== undefined) applyPos(saved.right, saved.bottom);
+      else                           resetPosInternal();
+      if (saved.dn !== undefined && saved.dn !== null) applyDesignNorth(saved.dn);
     } else {
       resetPosInternal();
     }
@@ -101,7 +165,139 @@ function resetPosInternal() {
   saveState();
 }
 
-// ── Public API ───────────────────────────────────────────────
+// ── Design North ──────────────────────────────────────────────
+
+function applyDesignNorth(deg) {
+  designNorthDeg = deg;
+
+  if (dnGroupEl && dnLabelEl) {
+    if (deg !== null) {
+      dnGroupEl.style.display = '';
+      dnGroupEl.setAttribute('transform', `rotate(${deg}, ${SVG_CX}, ${SVG_CY})`);
+      dnLabelEl.textContent = formatNorthAngle(deg);
+      // Counter-rotate label around its own anchor so it stays horizontal on screen
+      const lx = SVG_CX + 4;
+      const ly = SVG_CY - 32;
+      dnLabelEl.setAttribute('x', lx);
+      dnLabelEl.setAttribute('y', ly);
+      dnLabelEl.setAttribute('transform', `rotate(${-deg}, ${lx}, ${ly})`);
+    } else {
+      dnGroupEl.style.display = 'none';
+    }
+  }
+
+  // Show / hide "Clear Design North" menu item
+  const clearItem = document.getElementById('np-ctx-clear-dn');
+  if (clearItem) clearItem.style.display = deg !== null ? '' : 'none';
+
+  saveState();
+}
+
+// ── Design North input field ──────────────────────────────────
+
+function showDNInput() {
+  // Create on first use
+  let inp = document.getElementById('np-dn-input');
+  if (!inp) {
+    inp = document.createElement('div');
+    inp.id = 'np-dn-input';
+    inp.innerHTML = `
+      <div class="np-dn-title">Design North</div>
+      <input type="text" id="np-dn-field" placeholder="e.g. 7, 7.4, 7°22', 7W" autocomplete="off" spellcheck="false">
+      <div class="np-dn-hint">+ or E = east &nbsp;|&nbsp; - or W = west</div>
+    `;
+    document.body.appendChild(inp);
+
+    document.getElementById('np-dn-field').addEventListener('keydown', e => {
+      if (e.key === 'Enter') {
+        const val = e.target.value.trim();
+        const deg = parseNorthAngle(val);
+        if (deg !== null) {
+          applyDesignNorth(deg);
+          hideDNInput();
+        } else {
+          // Flash invalid state
+          e.target.classList.add('np-dn-invalid');
+          setTimeout(() => e.target.classList.remove('np-dn-invalid'), 600);
+        }
+        e.preventDefault();
+      }
+      if (e.key === 'Escape') {
+        hideDNInput();
+        e.stopPropagation();
+      }
+    });
+
+    document.getElementById('np-dn-field').addEventListener('input', e => {
+      e.target.classList.remove('np-dn-invalid');
+    });
+  }
+
+  // Position to the left of the NP container
+  const rect = npEl.getBoundingClientRect();
+  inp.style.display = 'block';
+  inp.style.right   = (window.innerWidth  - rect.left + 8) + 'px';
+  inp.style.bottom  = (window.innerHeight - rect.bottom)   + 'px';
+
+  // Pre-fill with current value if already set
+  const field = document.getElementById('np-dn-field');
+  field.value = designNorthDeg !== null ? formatNorthAngle(designNorthDeg) : '';
+  field.classList.remove('np-dn-invalid');
+  requestAnimationFrame(() => field.focus());
+
+  // Close on outside click
+  setTimeout(() => {
+    document.addEventListener('click', onClickOutsideDNInput);
+  }, 50);
+}
+
+function hideDNInput() {
+  const inp = document.getElementById('np-dn-input');
+  if (inp) inp.style.display = 'none';
+  document.removeEventListener('click', onClickOutsideDNInput);
+}
+
+function onClickOutsideDNInput(e) {
+  const inp = document.getElementById('np-dn-input');
+  if (inp && !inp.contains(e.target)) hideDNInput();
+}
+
+// ── SVG injection ─────────────────────────────────────────────
+
+function injectDNGroup(svg) {
+  svg.setAttribute('overflow', 'visible');
+
+  const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+  g.id = 'np-dn-group';
+  g.style.display = 'none';
+
+  // Long line through circle centre — extends well beyond SVG bounds
+  const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+  line.id = 'np-dn-line';
+  line.setAttribute('x1', SVG_CX);
+  line.setAttribute('y1', SVG_CY - 55);   // extends 33 units above circle edge
+  line.setAttribute('x2', SVG_CX);
+  line.setAttribute('y2', SVG_CY + 55);   // extends 33 units below circle edge
+  line.setAttribute('stroke', '#4a8a4a');
+  line.setAttribute('stroke-width', '1.5');
+
+  // Label — position and counter-rotation set in applyDesignNorth()
+  const label = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+  label.id = 'np-dn-label';
+  label.setAttribute('font-size', '8');
+  label.setAttribute('font-family', 'Outfit, sans-serif');
+  label.setAttribute('fill', '#7fc47f');
+  label.setAttribute('text-anchor', 'start');
+
+  g.appendChild(line);
+  g.appendChild(label);
+  svg.appendChild(g);
+
+  dnGroupEl = g;
+  dnLabelEl = label;
+}
+
+// ── Public API ────────────────────────────────────────────────
 
 export function toggleNorthPoint() {
   if (!npEl) return;
@@ -145,10 +341,14 @@ export function initNorthPoint2D(getStateCallback) {
     return;
   }
 
+  // Inject design north SVG group
+  const svg = npRotEl.querySelector('svg');
+  if (svg) injectDNGroup(svg);
+
   applySize(NP_BASE_W);
   restoreState();
 
-  // Click to select / deselect (shows resize handles)
+  // Selection (shows resize handles)
   npEl.addEventListener('click', e => {
     if (e.target.classList.contains('resize-handle')) return;
     npEl.classList.toggle('np-selected');
@@ -164,7 +364,7 @@ export function initNorthPoint2D(getStateCallback) {
   // Drag
   npEl.addEventListener('pointerdown', onDragDown);
 
-  // Global move / up
+  // Global pointer handlers
   document.addEventListener('pointermove', onPointerMove);
   document.addEventListener('pointerup',   onPointerUp);
 
@@ -181,6 +381,7 @@ export function initNorthPoint2D(getStateCallback) {
   document.addEventListener('click', e => {
     if (npCtxEl && !npCtxEl.contains(e.target)) npCtxEl.style.display = 'none';
   });
+
   document.getElementById('np-ctx-reset')?.addEventListener('click', () => {
     resetNorthPos();
     if (npCtxEl) npCtxEl.style.display = 'none';
@@ -189,9 +390,17 @@ export function initNorthPoint2D(getStateCallback) {
     toggleNorthPoint();
     if (npCtxEl) npCtxEl.style.display = 'none';
   });
+  document.getElementById('np-ctx-set-dn')?.addEventListener('click', () => {
+    if (npCtxEl) npCtxEl.style.display = 'none';
+    showDNInput();
+  });
+  document.getElementById('np-ctx-clear-dn')?.addEventListener('click', () => {
+    applyDesignNorth(null);
+    if (npCtxEl) npCtxEl.style.display = 'none';
+  });
 }
 
-// ── Resize ───────────────────────────────────────────────────
+// ── Resize ────────────────────────────────────────────────────
 
 function onResizeDown(e) {
   e.preventDefault();
@@ -200,17 +409,16 @@ function onResizeDown(e) {
   resizeHandle = e.target.dataset.handle;
   resizeStart.w = npW;
 
-  // offsetLeft/offsetTop: layout coordinates, unaffected by child rotation
   const L = npEl.offsetLeft;
   const T = npEl.offsetTop;
   const R = L + npW;
   const B = T + heightFromWidth(npW);
 
   switch (resizeHandle) {
-    case 'se': resizeStart.anchor = { x: L, y: T }; break; // drag se → anchor nw
-    case 'nw': resizeStart.anchor = { x: R, y: B }; break; // drag nw → anchor se
-    case 'ne': resizeStart.anchor = { x: L, y: B }; break; // drag ne → anchor sw
-    case 'sw': resizeStart.anchor = { x: R, y: T }; break; // drag sw → anchor ne
+    case 'se': resizeStart.anchor = { x: L, y: T }; break;
+    case 'nw': resizeStart.anchor = { x: R, y: B }; break;
+    case 'ne': resizeStart.anchor = { x: L, y: B }; break;
+    case 'sw': resizeStart.anchor = { x: R, y: T }; break;
   }
 
   npEl.classList.add('np-resizing');
@@ -220,7 +428,6 @@ function onResizeDown(e) {
 function handleResize(e) {
   if (!isResizing) return;
 
-  // Mouse in viewport layout coords
   const vpRect = npVP.getBoundingClientRect();
   const mouseX = e.clientX - vpRect.left;
   const mouseY = e.clientY - vpRect.top;
@@ -234,11 +441,9 @@ function handleResize(e) {
     case 'sw': dW = ax - mouseX; dH = mouseY - ay; break;
   }
 
-  // Derive width from average of both axes (preserves aspect ratio)
   const newW = Math.round((dW + dH * (NP_BASE_W / NP_BASE_H)) / 2);
   applySize(newW);
 
-  // Reposition so anchor corner stays fixed
   const newH = heightFromWidth(npW);
   let newLeft, newTop;
   switch (resizeHandle) {
@@ -258,7 +463,6 @@ function stopResize() {
   isResizing   = false;
   resizeHandle = null;
   npEl.classList.remove('np-resizing');
-  // Convert left/top back to right/bottom and persist
   const vw     = npVP.clientWidth;
   const vh     = npVP.clientHeight;
   const right  = vw - npEl.offsetLeft - npW;
@@ -266,7 +470,7 @@ function stopResize() {
   applyPos(right, bottom);
 }
 
-// ── Drag ─────────────────────────────────────────────────────
+// ── Drag ──────────────────────────────────────────────────────
 
 function onDragDown(e) {
   if (e.target.classList.contains('resize-handle') || isResizing) return;
@@ -275,7 +479,6 @@ function onDragDown(e) {
   dragPending     = true;
   dragStartClient = { x: e.clientX, y: e.clientY };
 
-  // Offset = distance from mouse to element's right/bottom edge (layout coords)
   const vr     = npVP.getBoundingClientRect();
   const mouseX = e.clientX - vr.left;
   const mouseY = e.clientY - vr.top;
