@@ -3253,16 +3253,23 @@
 
     function stopResize() {
       if (!isResizing) return;
-      
+
       isResizing = false;
       resizeHandle = null;
-      
-      // Remove visual feedback
       northEl.classList.remove('resizing');
-      
-      // Save scale preference
+
+      // Save scale
       const currentScale = getNorthScale();
       try { localStorage.setItem(NP_SCALE_KEY, currentScale.toString()); } catch {}
+
+      // Convert left/top (used during resize) back to right/bottom and save position
+      const rect = northEl.getBoundingClientRect();
+      const vpRect = northVP ? northVP.getBoundingClientRect() : { left: 0, top: 0 };
+      const vw = northVP ? northVP.clientWidth  : window.innerWidth;
+      const vh = northVP ? northVP.clientHeight : window.innerHeight;
+      const right  = vw - (rect.right  - vpRect.left);
+      const bottom = vh - (rect.bottom - vpRect.top);
+      applyNorthPos(right, bottom);
     }
 
     // Drag functionality
