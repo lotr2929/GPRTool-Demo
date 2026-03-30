@@ -1091,6 +1091,13 @@ body {
 }
 .np-ctx-divider:hover { background: var(--chrome-border); }
 
+/* N label - click/drag to set Design North */
+#np-n-label {
+  cursor: pointer;
+  transition: fill 0.15s;
+}
+#np-n-label:hover { fill: var(--accent); }
+
 /* Design North input field */
 #np-dn-input {
   display: none;

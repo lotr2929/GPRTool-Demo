@@ -45,6 +45,11 @@ let dragPending     = false;
 let dragStartClient = { x: 0, y: 0 };
 let dragOffset      = { x: 0, y: 0 };
 
+let nPointerDown    = false;
+let isNDragging     = false;
+let nDragStartAngle = 0;
+let nDragStartDN    = 0;
+
 let isResizing   = false;
 let resizeHandle = null;
 let resizeStart  = { w: NP_BASE_W, anchor: { x: 0, y: 0 } };
@@ -173,19 +178,13 @@ function applyDesignNorth(deg) {
   if (dnGroupEl && dnLabelEl) {
     if (deg !== null) {
       dnGroupEl.style.display = '';
-      dnGroupEl.setAttribute('transform', `rotate(${deg}, ${SVG_CX}, ${SVG_CY})`);
+      // Group transform is handled per-frame in updateNorthRotation
       dnLabelEl.textContent = formatNorthAngle(deg);
-      // Label sits just outside the circle at the arrow tip (y=15, circle edge y=18)
-      // W (negative) → right-aligned, anchor left of centre  → text flows left  (away from N)
-      // E (positive) → left-aligned,  anchor right of centre → text flows right (away from N)
-      const isWest = deg < 0;
-      const lx = isWest ? SVG_CX - 2 : SVG_CX + 2;
-      const ly = SVG_CY - 24;  // just outside circle edge, closer in
-      dnLabelEl.setAttribute('x', lx);
-      dnLabelEl.setAttribute('y', ly);
-      dnLabelEl.setAttribute('text-anchor', isWest ? 'end' : 'start');
-      // Counter-rotate around label anchor so it stays horizontal on screen
-      dnLabelEl.setAttribute('transform', `rotate(${-deg}, ${lx}, ${ly})`);
+      // Label positioned right of centre, near the dot - stays readable via group counter-rotation
+      dnLabelEl.setAttribute('x', SVG_CX + 5);
+      dnLabelEl.setAttribute('y', SVG_CY - 18);
+      dnLabelEl.setAttribute('text-anchor', 'start');
+      dnLabelEl.removeAttribute('transform');
     } else {
       dnGroupEl.style.display = 'none';
     }
@@ -200,7 +199,7 @@ function applyDesignNorth(deg) {
 
 // ── Design North input field ──────────────────────────────────
 
-function showDNInput() {
+function showDNInput(autoFocus = true) {
   // Create on first use
   let inp = document.getElementById('np-dn-input');
   if (!inp) {
@@ -248,7 +247,7 @@ function showDNInput() {
   const field = document.getElementById('np-dn-field');
   field.value = designNorthDeg !== null ? formatNorthAngle(designNorthDeg) : '';
   field.classList.remove('np-dn-invalid');
-  requestAnimationFrame(() => field.focus());
+  if (autoFocus) requestAnimationFrame(() => field.focus());
 
   // Close on outside click
   setTimeout(() => {
@@ -341,8 +340,16 @@ export function updateNorthRotation() {
     : new THREE.Vector3(pan2D.x, 0, pan2D.z);
   _npO.copy(target).project(cam);
   _npN.copy(target).add(new THREE.Vector3(0, 0, -500)).project(cam);
-  const deg = Math.atan2(_npN.x - _npO.x, _npN.y - _npO.y) * 180 / Math.PI;
-  npRotEl.style.transform = `rotate(${deg}deg)`;
+  const camDeg = Math.atan2(_npN.x - _npO.x, _npN.y - _npO.y) * 180 / Math.PI;
+
+  // Icon rotates by camera angle + design north offset
+  const iconRot = camDeg + (designNorthDeg !== null ? designNorthDeg : 0);
+  npRotEl.style.transform = `rotate(${iconRot}deg)`;
+
+  // DN group counter-rotates every frame so the line always points screen-up
+  if (dnGroupEl && designNorthDeg !== null) {
+    dnGroupEl.setAttribute('transform', `rotate(${-iconRot}, ${SVG_CX}, ${SVG_CY})`);
+  }
 }
 
 export function initNorthPoint2D(getStateCallback) {
@@ -379,6 +386,10 @@ export function initNorthPoint2D(getStateCallback) {
 
   // Drag
   npEl.addEventListener('pointerdown', onDragDown);
+
+  // N-label: click to open DN panel, drag to rotate
+  const nLabel = document.getElementById('np-n-label');
+  if (nLabel) nLabel.addEventListener('pointerdown', onNDown);
 
   // Global pointer handlers
   document.addEventListener('pointermove', onPointerMove);
@@ -530,14 +541,59 @@ function stopDrag() {
   npEl.style.cursor = 'grab';
 }
 
+// ── N-label drag-to-rotate ───────────────────────────────────
+
+function angleFromNPCenter(clientX, clientY) {
+  const rect = npEl.getBoundingClientRect();
+  const cx   = rect.left + rect.width  * 0.5;
+  const cy   = rect.top  + rect.height * 0.555; // compass circle centre
+  return Math.atan2(clientX - cx, cy - clientY) * 180 / Math.PI;
+}
+
+function onNDown(e) {
+  if (e.button !== 0) return;
+  e.stopPropagation();
+  e.preventDefault();
+  nPointerDown    = true;
+  isNDragging     = false;
+  nDragStartAngle = angleFromNPCenter(e.clientX, e.clientY);
+  nDragStartDN    = designNorthDeg !== null ? designNorthDeg : 0;
+  npEl.setPointerCapture(e.pointerId);
+}
+
+function handleNDrag(e) {
+  if (!nPointerDown) return;
+  const cur   = angleFromNPCenter(e.clientX, e.clientY);
+  const delta = cur - nDragStartAngle;
+  if (!isNDragging) {
+    if (Math.abs(delta) < 3) return;
+    isNDragging = true;
+    showDNInput(false); // open panel without stealing focus during drag
+  }
+  const newDN = nDragStartDN + delta;
+  applyDesignNorth(newDN);
+  const field = document.getElementById('np-dn-field');
+  if (field) field.value = formatNorthAngle(newDN);
+}
+
+function stopNDrag() {
+  if (!nPointerDown) return;
+  const wasClick = !isNDragging;
+  nPointerDown   = false;
+  isNDragging    = false;
+  if (wasClick) showDNInput(true); // click on N opens panel with focus
+}
+
 // ── Combined pointer handlers ─────────────────────────────────
 
 function onPointerMove(e) {
   handleResize(e);
   handleDrag(e);
+  handleNDrag(e);
 }
 
 function onPointerUp() {
   stopResize();
   stopDrag();
+  stopNDrag();
 }
