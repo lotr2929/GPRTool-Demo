@@ -602,6 +602,7 @@
 
     // Compass face -- canvas texture replicating the 2D SVG icon exactly
     // SVG viewBox 0 0 64 72, circle at (32,40) r=22; scale=3, circle centred at canvas (128,128)
+    let gizmoCompassMesh = null;
     (function() {
       const S  = 256;
       const sc = 3;
@@ -653,6 +654,7 @@
         new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(cv), transparent: true, side: THREE.DoubleSide })
       );
       compassMesh.rotation.x = -Math.PI / 2;
+      gizmoCompassMesh = compassMesh;
       gizmoScene.add(compassMesh);
     })();
 
@@ -675,6 +677,60 @@
       _gizmoDNMat
     ));
     gizmoScene.add(gizmoDNGroup);
+
+    // Gizmo 3D state -- independent position + size
+    let gizmo3DSize    = 120;
+    let gizmo3DRight   = 16;
+    let gizmo3DBottom  = 16;
+    let _gz3DDrag      = false;
+    let _gz3DDragStart = { x: 0, y: 0, r: 0, b: 0 };
+
+    function gz3DHitTest(e) {
+      const rect = renderer.domElement.getBoundingClientRect();
+      const mx = e.clientX - rect.left;
+      const my = e.clientY - rect.top;
+      const cw = container.clientWidth;
+      const ch = container.clientHeight;
+      const gx = cw - gizmo3DRight - gizmo3DSize;
+      const gy = ch - gizmo3DBottom - gizmo3DSize;
+      return mx >= gx && mx <= gx + gizmo3DSize && my >= gy && my <= gy + gizmo3DSize;
+    }
+
+    renderer.domElement.addEventListener('pointerdown', e => {
+      if (currentMode !== '3d' || e.button !== 0) return;
+      if (!gz3DHitTest(e)) return;
+      _gz3DDrag = true;
+      _gz3DDragStart = { x: e.clientX, y: e.clientY, r: gizmo3DRight, b: gizmo3DBottom };
+      renderer.domElement.setPointerCapture(e.pointerId);
+      e.stopPropagation();
+    });
+
+    renderer.domElement.addEventListener('pointermove', e => {
+      if (currentMode !== '3d') return;
+      if (_gz3DDrag) {
+        const dx = e.clientX - _gz3DDragStart.x;
+        const dy = e.clientY - _gz3DDragStart.y;
+        const cw = container.clientWidth;
+        const ch = container.clientHeight;
+        gizmo3DRight  = Math.max(0, Math.min(cw - gizmo3DSize, _gz3DDragStart.r - dx));
+        gizmo3DBottom = Math.max(0, Math.min(ch - gizmo3DSize, _gz3DDragStart.b - dy));
+      }
+    });
+
+    renderer.domElement.addEventListener('pointerup', e => {
+      if (_gz3DDrag) {
+        _gz3DDrag = false;
+        renderer.domElement.releasePointerCapture(e.pointerId);
+      }
+    });
+
+    renderer.domElement.addEventListener('wheel', e => {
+      if (currentMode !== '3d') return;
+      if (!gz3DHitTest(e)) return;
+      e.preventDefault();
+      const factor = e.deltaY > 0 ? 0.88 : 1.12;
+      gizmo3DSize = Math.round(Math.max(60, Math.min(240, gizmo3DSize * factor)));
+    }, { passive: false });
 
     /* ============================================================
        GEO UTILITIES
@@ -2013,23 +2069,18 @@
        COMPASS GIZMO -- render function
     ============================================================ */
     function renderCompassGizmo() {
-      const npContainer = document.getElementById('np-container');
-      if (!npContainer) return;
+      const size = gizmo3DSize;
+      const cw   = container.clientWidth;
+      const ch   = container.clientHeight;
+      const x    = Math.round(cw - gizmo3DRight - size);
+      const y    = Math.round(gizmo3DBottom);
 
-      const size   = 110;
-      const right  = parseFloat(npContainer.style.right)  || 16;
-      const bottom = parseFloat(npContainer.style.bottom) || 16;
-      const cw     = container.clientWidth;
-      const ch     = container.clientHeight;
-      const x      = Math.round(cw - right - size);
-      const y      = Math.round(bottom);
-
-      // Sync gizmo camera orientation with camera3D
+      // Mirror camera3D orientation exactly -- icon lies in XZ plane and tilts with camera
       gizmoCamera.quaternion.copy(camera3D.quaternion);
       const _gbwd = new THREE.Vector3(0, 0, 1).applyQuaternion(gizmoCamera.quaternion);
       gizmoCamera.position.copy(_gbwd).multiplyScalar(5);
 
-      // Sync DN arrow
+      // DN arrow
       const _dnDeg = getDesignNorthDeg();
       if (_dnDeg !== null) {
         gizmoDNGroup.visible    = true;
