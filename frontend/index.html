@@ -692,8 +692,13 @@
     let _gzResizeStart = { x: 0, y: 0, s: 1.0 };
 
     function applyGizmoScale() {
-      if (gizmoCompassMesh) gizmoCompassMesh.scale.set(gizmoScale, 1, gizmoScale);
-      gizmoDNGroup.scale.set(gizmoScale, 1, gizmoScale);
+      // Resize by zooming the ortho camera frustum -- mesh never scales, stays horizontal
+      const half = 1.5 / gizmoScale;
+      gizmoCamera.left   = -half;
+      gizmoCamera.right  =  half;
+      gizmoCamera.top    =  half;
+      gizmoCamera.bottom = -half;
+      gizmoCamera.updateProjectionMatrix();
     }
 
     // DOM overlay div -- sits on top of canvas, blocks OrbitControls
