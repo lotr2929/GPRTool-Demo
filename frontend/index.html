@@ -695,11 +695,11 @@
 
     // DN angle text -- flat plane in XZ, just outside circle at north
     const _dnTextCv  = document.createElement('canvas');
-    _dnTextCv.width  = 192; _dnTextCv.height = 56;
+    _dnTextCv.width  = 256; _dnTextCv.height = 72;
     const _dnTextCtx = _dnTextCv.getContext('2d');
     const _dnTextTex = new THREE.CanvasTexture(_dnTextCv);
     const _dnTextMesh = new THREE.Mesh(
-      new THREE.PlaneGeometry(0.72, 0.21),
+      new THREE.PlaneGeometry(0.90, 0.25),
       new THREE.MeshBasicMaterial({ map: _dnTextTex, transparent: true, depthWrite: false, side: THREE.DoubleSide })
     );
     _dnTextMesh.rotation.x = -Math.PI / 2;
@@ -707,13 +707,13 @@
     gizmoDNGroup.add(_dnTextMesh);
 
     function updateDNTextMesh(dnDeg) {
-      _dnTextCtx.clearRect(0, 0, 192, 56);
+      _dnTextCtx.clearRect(0, 0, 256, 72);
       if (dnDeg !== null && dnDeg !== undefined) {
         _dnTextCtx.fillStyle = '#2a7a2a';
-        _dnTextCtx.font = 'bold 32px Outfit, Georgia, sans-serif';
+        _dnTextCtx.font = 'bold 50px Outfit, Georgia, sans-serif';
         _dnTextCtx.textAlign = 'center';
         _dnTextCtx.textBaseline = 'middle';
-        _dnTextCtx.fillText('DN ' + Math.round(dnDeg) + '\u00b0', 96, 28);
+        _dnTextCtx.fillText('DN ' + Math.round(dnDeg) + '\u00b0', 128, 36);
       }
       _dnTextTex.needsUpdate = true;
     }
