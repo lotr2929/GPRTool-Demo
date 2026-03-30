@@ -678,59 +678,141 @@
     ));
     gizmoScene.add(gizmoDNGroup);
 
-    // Gizmo 3D state -- independent position + size
-    let gizmo3DSize    = 120;
+    // Gizmo 3D state
+    const GIZMO_SIZE   = 180;        // fixed pixel render size
+    let gizmoScale     = 1.0;        // XZ scale of 3D objects inside gizmo (0.3 - 3.0)
     let gizmo3DRight   = 16;
     let gizmo3DBottom  = 16;
-    let _gz3DDrag      = false;
-    let _gz3DDragStart = { x: 0, y: 0, r: 0, b: 0 };
+    let gizmo3DVisible = true;       // toggled ONLY via View menu
+    let _gzDragging    = false;      // true once pointer moves > 4px after down
+    let _gzDragPending = false;
+    let _gzDragStart   = { x: 0, y: 0, r: 0, b: 0 };
+    let _gzSelected    = false;      // shows resize handles
+    let _gzResizing    = false;
+    let _gzResizeStart = { x: 0, y: 0, s: 1.0 };
 
-    function gz3DHitTest(e) {
-      const rect = renderer.domElement.getBoundingClientRect();
-      const mx = e.clientX - rect.left;
-      const my = e.clientY - rect.top;
-      const cw = container.clientWidth;
-      const ch = container.clientHeight;
-      const gx = cw - gizmo3DRight - gizmo3DSize;
-      const gy = ch - gizmo3DBottom - gizmo3DSize;
-      return mx >= gx && mx <= gx + gizmo3DSize && my >= gy && my <= gy + gizmo3DSize;
+    function applyGizmoScale() {
+      if (gizmoCompassMesh) gizmoCompassMesh.scale.set(gizmoScale, 1, gizmoScale);
+      gizmoDNGroup.scale.set(gizmoScale, 1, gizmoScale);
     }
 
-    renderer.domElement.addEventListener('pointerdown', e => {
-      if (currentMode !== '3d' || e.button !== 0) return;
-      if (!gz3DHitTest(e)) return;
-      _gz3DDrag = true;
-      _gz3DDragStart = { x: e.clientX, y: e.clientY, r: gizmo3DRight, b: gizmo3DBottom };
-      renderer.domElement.setPointerCapture(e.pointerId);
+    // DOM overlay div -- sits on top of canvas, blocks OrbitControls
+    const gizmoOverlay = document.createElement('div');
+    gizmoOverlay.id = 'gizmo3d-overlay';
+    gizmoOverlay.style.cssText = [
+      'position:absolute',
+      `width:${GIZMO_SIZE}px`,
+      `height:${GIZMO_SIZE}px`,
+      'cursor:grab',
+      'display:none',
+      'z-index:10',
+      'box-sizing:border-box',
+      'border-radius:50%',
+    ].join(';');
+    container.style.position = 'relative';
+    container.appendChild(gizmoOverlay);
+
+    // Corner resize handles
+    const _gzHandles = {};
+    [['nw','0','','','0'],['ne','0','0','',''],['sw','','','0','0'],['se','','0','','0']].forEach(([id,t,r,b,l]) => {
+      const h = document.createElement('div');
+      h.dataset.handle = id;
+      h.style.cssText = [
+        'position:absolute', 'width:10px', 'height:10px',
+        'background:#4a8a4a', 'border:1.5px solid #fff', 'border-radius:2px',
+        'display:none', 'z-index:12',
+        id === 'nw' || id === 'se' ? 'cursor:nwse-resize' : 'cursor:nesw-resize',
+        t  ? `top:${t}px`    : '', r ? `right:${r}px`   : '',
+        b  ? `bottom:${b}px` : '', l ? `left:${l}px`    : '',
+      ].filter(Boolean).join(';');
+      gizmoOverlay.appendChild(h);
+      _gzHandles[id] = h;
+    });
+
+    function setGizmoSelected(sel) {
+      _gzSelected = sel;
+      const show = sel ? 'block' : 'none';
+      Object.values(_gzHandles).forEach(h => h.style.display = show);
+      gizmoOverlay.style.outline = sel ? '1.5px solid #4a8a4a' : 'none';
+    }
+
+    function updateGizmoOverlay() {
+      const show = gizmo3DVisible && currentMode === '3d';
+      gizmoOverlay.style.display = show ? 'block' : 'none';
+      gizmoOverlay.style.right  = gizmo3DRight  + 'px';
+      gizmoOverlay.style.bottom = gizmo3DBottom + 'px';
+    }
+
+    gizmoOverlay.addEventListener('pointerdown', e => {
+      if (e.button !== 0) return;
+      const handle = e.target.dataset?.handle;
+      if (handle) {
+        // Start resize from handle
+        _gzResizing   = true;
+        _gzResizeStart = { x: e.clientX, y: e.clientY, s: gizmoScale };
+        gizmoOverlay.setPointerCapture(e.pointerId);
+        e.stopPropagation();
+        return;
+      }
+      // Start potential drag on body
+      _gzDragPending = true;
+      _gzDragging    = false;
+      _gzDragStart   = { x: e.clientX, y: e.clientY, r: gizmo3DRight, b: gizmo3DBottom };
+      gizmoOverlay.setPointerCapture(e.pointerId);
       e.stopPropagation();
     });
 
-    renderer.domElement.addEventListener('pointermove', e => {
-      if (currentMode !== '3d') return;
-      if (_gz3DDrag) {
-        const dx = e.clientX - _gz3DDragStart.x;
-        const dy = e.clientY - _gz3DDragStart.y;
+    gizmoOverlay.addEventListener('pointermove', e => {
+      if (_gzResizing) {
+        // SE/NE dragging right = bigger; NW/SW dragging left = bigger
+        const dx = e.clientX - _gzResizeStart.x;
+        const dy = e.clientY - _gzResizeStart.y;
+        const delta = (dx - dy) / 120;
+        gizmoScale = Math.max(0.3, Math.min(3.0, _gzResizeStart.s + delta));
+        applyGizmoScale();
+        return;
+      }
+      if (!_gzDragPending) return;
+      const dx = e.clientX - _gzDragStart.x;
+      const dy = e.clientY - _gzDragStart.y;
+      if (!_gzDragging && Math.hypot(dx, dy) > 4) _gzDragging = true;
+      if (_gzDragging) {
         const cw = container.clientWidth;
         const ch = container.clientHeight;
-        gizmo3DRight  = Math.max(0, Math.min(cw - gizmo3DSize, _gz3DDragStart.r - dx));
-        gizmo3DBottom = Math.max(0, Math.min(ch - gizmo3DSize, _gz3DDragStart.b - dy));
+        gizmo3DRight  = Math.max(0, Math.min(cw - GIZMO_SIZE, _gzDragStart.r - dx));
+        gizmo3DBottom = Math.max(0, Math.min(ch - GIZMO_SIZE, _gzDragStart.b - dy));
+        updateGizmoOverlay();
       }
     });
 
-    renderer.domElement.addEventListener('pointerup', e => {
-      if (_gz3DDrag) {
-        _gz3DDrag = false;
-        renderer.domElement.releasePointerCapture(e.pointerId);
+    gizmoOverlay.addEventListener('pointerup', e => {
+      const wasDrag    = _gzDragging;
+      const wasResize  = _gzResizing;
+      _gzDragPending   = false;
+      _gzDragging      = false;
+      _gzResizing      = false;
+      gizmoOverlay.style.cursor = 'grab';
+      // If neither drag nor resize occurred it was a click — toggle handles
+      if (!wasDrag && !wasResize) {
+        if (!e.target.dataset?.handle) setGizmoSelected(!_gzSelected);
       }
     });
 
-    renderer.domElement.addEventListener('wheel', e => {
-      if (currentMode !== '3d') return;
-      if (!gz3DHitTest(e)) return;
-      e.preventDefault();
-      const factor = e.deltaY > 0 ? 0.88 : 1.12;
-      gizmo3DSize = Math.round(Math.max(60, Math.min(240, gizmo3DSize * factor)));
-    }, { passive: false });
+    // Click outside gizmo deselects it
+    document.addEventListener('click', e => {
+      if (_gzSelected && !gizmoOverlay.contains(e.target)) setGizmoSelected(false);
+    });
+
+    // Escape deselects
+    document.addEventListener('keydown', e => {
+      if (e.key === 'Escape' && _gzSelected) setGizmoSelected(false);
+    });
+
+    function toggleGizmo3D() {
+      gizmo3DVisible = !gizmo3DVisible;
+      updateGizmoOverlay();
+      showFeedback('North Point ' + (gizmo3DVisible ? 'visible' : 'hidden'));
+    }
 
     /* ============================================================
        GEO UTILITIES
@@ -1979,6 +2061,7 @@
         document.getElementById('status-mode').textContent = '3D';
         showFeedback('3D View \u2014 click a surface to select it');
       }
+      updateGizmoOverlay();
     }
 
     document.querySelectorAll('.mode-btn').forEach(btn =>
@@ -2069,7 +2152,7 @@
        COMPASS GIZMO -- render function
     ============================================================ */
     function renderCompassGizmo() {
-      const size = gizmo3DSize;
+      const size = GIZMO_SIZE;
       const cw   = container.clientWidth;
       const ch   = container.clientHeight;
       const x    = Math.round(cw - gizmo3DRight - size);
@@ -2104,7 +2187,7 @@
       controls.update();
       updateNorthRotation();
       renderer.render(scene, camera);
-      if (currentMode === '3d') renderCompassGizmo();
+      if (currentMode === '3d' && gizmo3DVisible) renderCompassGizmo();
       requestAnimationFrame(animate);
     })();
 
@@ -3258,7 +3341,7 @@
         if      (action === 'fit-site')           document.getElementById('fitSiteBtn')?.click();
         else if (action === 'toggle-grid')         document.getElementById('toggleGridBtn')?.click();
         else if (action === 'toggle-axes')         toggleAxes();
-        else if (action === 'north-pointer')       toggleNorthPoint();
+        else if (action === 'north-pointer')       { toggleNorthPoint(); toggleGizmo3D(); }
         else if (action === 'north-reset')         resetNorthPos();
         // Note: toggleNorthPoint / resetNorthPos imported from north-point-2d.js
         else if (action === 'import-model')        document.getElementById('import3DModelBtn')?.click();
