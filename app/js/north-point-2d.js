@@ -182,8 +182,8 @@ function applyDesignNorth(deg) {
   designNorthAngle = deg;
 
   if (dnGroupEl && dnLabelEl) {
-    // Label shows tilt of DN from TN = designNorthAngle - globalNorthAngle
-    dnLabelEl.textContent = formatNorthAngle(designNorthAngle - globalNorthAngle);
+    // Label shows tilt of DN from TN = designNorthAngle
+    dnLabelEl.textContent = formatNorthAngle(designNorthAngle);
   }
 
   // Show / hide "Clear Design North" menu item
@@ -195,8 +195,8 @@ function applyDesignNorth(deg) {
 
 function applyGlobalNorth(deg) {
   globalNorthAngle = deg ?? 0;
-  // Label shows tilt of DN from TN = designNorthAngle - globalNorthAngle
-  if (dnLabelEl) dnLabelEl.textContent = formatNorthAngle(designNorthAngle - globalNorthAngle);
+  // Label shows tilt of DN from TN = designNorthAngle
+  if (dnLabelEl) dnLabelEl.textContent = formatNorthAngle(designNorthAngle);
   saveState();
 }
 
@@ -424,7 +424,7 @@ export function updateNorthRotation() {
   // Show only when DN ≠ TN
   if (dnGroupEl && dnLabelEl) {
     dnGroupEl.setAttribute('transform', `rotate(0, ${SVG_CX}, ${SVG_CY})`);
-    dnGroupEl.style.display = designNorthAngle !== 0 ? '' : 'none';
+    dnGroupEl.style.display = designNorthAngle !== globalNorthAngle ? '' : 'none';
 
     // Shift label sideways if TN arrow is near compass top (where D label sits)
     const LABEL_Y   = 14;
@@ -535,14 +535,7 @@ export function initNorthPoint2D(getStateCallback) {
     enterRotateMode();
     showDNInput(true);
   });
-  document.getElementById('np-ctx-set-dn')?.addEventListener('click', () => {
-    if (npCtxEl) npCtxEl.style.display = 'none';
-    showDNInput();
-  });
-  document.getElementById('np-ctx-clear-dn')?.addEventListener('click', () => {
-    applyDesignNorth(null);
-    if (npCtxEl) npCtxEl.style.display = 'none';
-  });
+
 }
 
 // ── Resize ────────────────────────────────────────────────────
@@ -625,7 +618,7 @@ function onDragDown(e) {
     // In rotate mode: drag rotates the icon instead of moving it
     isRotating       = true;
     rotateStartAngle = angleFromNPCenter(e.clientX, e.clientY);
-    rotateStartDN    = globalNorthAngle;
+    rotateStartDN    = designNorthAngle;
     npEl.setPointerCapture(e.pointerId);
     e.stopPropagation();
     return;
@@ -649,10 +642,11 @@ function onDragDown(e) {
 function handleDrag(e) {
   if (isRotating) {
     const cur   = angleFromNPCenter(e.clientX, e.clientY);
-    const newTN = rotateStartDN + (cur - rotateStartAngle);
-    applyGlobalNorth(newTN);
+    // Negate: dragging clockwise (E) sets DN east of TN, displayed as positive E
+    const newDN = rotateStartDN - (cur - rotateStartAngle);
+    applyDesignNorth(newDN);
     const field = document.getElementById('np-dn-field');
-    if (field) field.value = formatNorthAngle(newTN);
+    if (field) field.value = formatNorthAngle(newDN);
     return;
   }
   if (!dragPending && !isDragging) return;
