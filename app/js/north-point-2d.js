@@ -155,7 +155,9 @@ function restoreState() {
       if (saved.visible === false) npEl.style.display = 'none';
       if (saved.right !== undefined) applyPos(saved.right, saved.bottom);
       else                           resetPosInternal();
-      applyDesignNorth(saved.dn !== undefined && saved.dn !== null ? saved.dn : 0);
+      // DN always defaults to 0 on load — grid starts vertical/horizontal
+      applyDesignNorth(0);
+      // TN (globalNorthAngle) is a geographic fact — restore between sessions
       if (saved.tn !== undefined) applyGlobalNorth(saved.tn);
     } else {
       resetPosInternal();
