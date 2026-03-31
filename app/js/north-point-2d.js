@@ -181,13 +181,8 @@ function applyDesignNorth(deg) {
   designNorthAngle = deg;
 
   if (dnGroupEl && dnLabelEl) {
-    if (deg !== null) {
-      dnGroupEl.style.display = '';
-      // Group transform + label position handled per-frame in updateNorthRotation
-      dnLabelEl.textContent = formatNorthAngle(deg);
-    } else {
-      dnGroupEl.style.display = 'none';
-    }
+    // Label shows designNorthAngle (tilt of DN from TN)
+    dnLabelEl.textContent = formatNorthAngle(designNorthAngle);
   }
 
   // Show / hide "Clear Design North" menu item
@@ -199,8 +194,8 @@ function applyDesignNorth(deg) {
 
 function applyGlobalNorth(deg) {
   globalNorthAngle = deg ?? 0;
-  // Update label text to show TN offset from DN
-  if (dnLabelEl) dnLabelEl.textContent = formatNorthAngle(globalNorthAngle);
+  // Label shows the tilt angle — when DN=0, this equals globalNorthAngle
+  if (dnLabelEl) dnLabelEl.textContent = formatNorthAngle(globalNorthAngle - designNorthAngle);
   saveState();
 }
 
@@ -420,8 +415,8 @@ export function updateNorthRotation() {
   if (dnGroupEl && dnLabelEl) {
     const tnLocalAngle = designNorthAngle;
     dnGroupEl.setAttribute('transform', `rotate(${tnLocalAngle}, ${SVG_CX}, ${SVG_CY})`);
-    // Show green DN arrow only when DN ≠ TN
-    dnGroupEl.style.display = designNorthAngle !== 0 ? '' : 'none';
+    // Show green DN arrow when TN ≠ DN (i.e. globalNorthAngle has been set)
+    dnGroupEl.style.display = globalNorthAngle !== 0 ? '' : 'none';
 
     // Shift label sideways if TN arrow is near compass top (where D label sits)
     const LABEL_Y   = 14;
