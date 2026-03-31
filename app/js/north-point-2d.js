@@ -408,15 +408,16 @@ export function updateNorthRotation() {
     camDeg = Math.atan2(_npN.x - _npO.x, _npN.y - _npO.y) * 180 / Math.PI;
   }
 
-  // Housing tracks Design North — DN always at top of compass on screen
-  const iconRot = camDeg + designNorthAngle;
+  // camDeg already encodes the full view rotation (including rotate2D = designNorthAngle)
+  // No extra offset needed — compass tracks view directly
+  const iconRot = camDeg;
   npRotEl.style.transform = `rotate(${iconRot}deg)`;
 
   // TN needle rotates independently within housing to point True North
   // Net screen angle of needle = iconRot + needleLocal = camDeg + globalNorthAngle
-  // → needleLocal = globalNorthAngle - designNorthAngle
+  // → needleLocal = globalNorthAngle (since iconRot = camDeg)
   if (tnNeedleEl) {
-    const needleLocal = globalNorthAngle - designNorthAngle;
+    const needleLocal = globalNorthAngle;
     tnNeedleEl.setAttribute('transform', `rotate(${needleLocal}, ${SVG_CX}, ${SVG_CY})`);
   }
 
@@ -432,7 +433,7 @@ export function updateNorthRotation() {
     const SIDE_X    = 10;
 
     // Clash is between TN needle and DN label (at top) — use needle local angle
-    const needleLocalForClash = globalNorthAngle - designNorthAngle;
+    const needleLocalForClash = globalNorthAngle;
     let normTN = ((needleLocalForClash % 360) + 360) % 360;
     if (normTN > 180) normTN -= 360;
 
