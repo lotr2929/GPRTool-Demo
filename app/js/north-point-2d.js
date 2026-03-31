@@ -37,9 +37,10 @@ let npW = NP_BASE_W;
 let getState;
 
 let designNorthAngle = 0;  // grid orientation — changed by "Set Design North"
-let globalNorthAngle = 0;  // TN offset from DN — changed by "Rotate N Point"
-let dnGroupEl = null;
-let dnLabelEl = null;
+let globalNorthAngle = 0;  // TN offset from world -Z — changed by "Rotate N Point"
+let dnGroupEl  = null;  // green DN arrow (injected)
+let dnLabelEl  = null;  // angle label
+let tnNeedleEl = null;  // TN needle group (from SVG)
 
 let isDragging      = false;
 let dragPending     = false;
@@ -181,8 +182,8 @@ function applyDesignNorth(deg) {
   designNorthAngle = deg;
 
   if (dnGroupEl && dnLabelEl) {
-    // Label shows designNorthAngle (tilt of DN from TN)
-    dnLabelEl.textContent = formatNorthAngle(designNorthAngle);
+    // Label shows tilt of DN from TN = designNorthAngle - globalNorthAngle
+    dnLabelEl.textContent = formatNorthAngle(designNorthAngle - globalNorthAngle);
   }
 
   // Show / hide "Clear Design North" menu item
@@ -194,8 +195,8 @@ function applyDesignNorth(deg) {
 
 function applyGlobalNorth(deg) {
   globalNorthAngle = deg ?? 0;
-  // Label shows the tilt angle — when DN=0, this equals globalNorthAngle
-  if (dnLabelEl) dnLabelEl.textContent = formatNorthAngle(globalNorthAngle - designNorthAngle);
+  // Label shows tilt of DN from TN = designNorthAngle - globalNorthAngle
+  if (dnLabelEl) dnLabelEl.textContent = formatNorthAngle(designNorthAngle - globalNorthAngle);
   saveState();
 }
 
@@ -407,23 +408,32 @@ export function updateNorthRotation() {
     camDeg = Math.atan2(_npN.x - _npO.x, _npN.y - _npO.y) * 180 / Math.PI;
   }
 
-  // Compass body tracks True North — N always points to TN on screen
-  const iconRot = camDeg + globalNorthAngle;
+  // Housing tracks Design North — DN always at top of compass on screen
+  const iconRot = camDeg + designNorthAngle;
   npRotEl.style.transform = `rotate(${iconRot}deg)`;
 
-  // Green arrow points Design North — rotates within compass by designNorthAngle
+  // TN needle rotates independently within housing to point True North
+  // Net screen angle of needle = iconRot + needleLocal = camDeg + globalNorthAngle
+  // → needleLocal = globalNorthAngle - designNorthAngle
+  if (tnNeedleEl) {
+    const needleLocal = globalNorthAngle - designNorthAngle;
+    tnNeedleEl.setAttribute('transform', `rotate(${needleLocal}, ${SVG_CX}, ${SVG_CY})`);
+  }
+
+  // Green DN arrow stays fixed at housing top (no extra rotation needed)
+  // Show only when DN ≠ TN
   if (dnGroupEl && dnLabelEl) {
-    const tnLocalAngle = designNorthAngle - globalNorthAngle;
-    dnGroupEl.setAttribute('transform', `rotate(${tnLocalAngle}, ${SVG_CX}, ${SVG_CY})`);
-    // Show green DN arrow when TN ≠ DN (i.e. globalNorthAngle has been set)
-    dnGroupEl.style.display = globalNorthAngle !== 0 ? '' : 'none';
+    dnGroupEl.setAttribute('transform', `rotate(0, ${SVG_CX}, ${SVG_CY})`);
+    dnGroupEl.style.display = designNorthAngle !== 0 ? '' : 'none';
 
     // Shift label sideways if TN arrow is near compass top (where D label sits)
     const LABEL_Y   = 14;
     const CLASH_DEG = 65;
     const SIDE_X    = 10;
 
-    let normTN = ((globalNorthAngle % 360) + 360) % 360;
+    // Clash is between TN needle and DN label (at top) — use needle local angle
+    const needleLocalForClash = globalNorthAngle - designNorthAngle;
+    let normTN = ((needleLocalForClash % 360) + 360) % 360;
     if (normTN > 180) normTN -= 360;
 
     if (Math.abs(normTN) < CLASH_DEG) {
@@ -470,8 +480,9 @@ export function initNorthPoint2D(getStateCallback) {
     return;
   }
 
-  // Inject design north SVG group
+  // Grab TN needle group and inject DN arrow group
   const svg = npRotEl.querySelector('svg');
+  tnNeedleEl = svg ? svg.getElementById('np-tn-needle') : null;
   if (svg) injectDNGroup(svg);
 
   applySize(NP_BASE_W);
