@@ -230,6 +230,7 @@
       toggleNorthPoint,
       resetNorthPos,
       getDesignNorthAngle,
+      resetDesignNorth,
       setNorthPointMode,
     } from './js/north-point-2d.js';
     import {
@@ -1879,6 +1880,7 @@
               base2DhalfH     =  halfH;
               camera2D.updateProjectionMatrix();
             }
+            resetDesignNorth();
             update2DCamera();
             showFeedback('2D view reset');
           } else {

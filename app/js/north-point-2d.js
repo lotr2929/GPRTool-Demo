@@ -453,6 +453,7 @@ export function updateNorthRotation() {
 }
 
 export function getDesignNorthAngle() { return designNorthAngle; }
+export function resetDesignNorth() { applyDesignNorth(0); }
 
 export function setNorthPointMode(mode) {
   // '3d': hide DOM widget — gizmo takes over; '2d': restore per saved preference
