@@ -45,7 +45,7 @@ REM -----------------------------------------
 REM 2. Auto-generate commit message
 REM    Format: 30MAR26 14:32 - north-point-2d.js, styles.css
 REM -----------------------------------------
-powershell -NoProfile -Command "$ts=(Get-Date -Format 'ddMMMyy HH:mm').ToUpper(); $names=(git diff --cached --name-only | ForEach-Object { Split-Path $_ -Leaf } | Select-Object -First 4) -join ', '; Set-Content '%TEMP%\gpr_msg.txt' ($ts + ' - ' + $names)"
+powershell -NoProfile -Command "$ts=(Get-Date -Format 'ddMMMyy HH:mm').ToUpper(); $all=@(git diff --cached --name-only); $count=$all.Count; $names=($all | ForEach-Object { Split-Path $_ -Leaf } | Select-Object -First 4) -join ', '; $suffix = if ($count -gt 4) { '...' } else { '' }; Set-Content '%TEMP%\gpr_msg.txt' ($ts + ' (' + $count + ') - ' + $names + $suffix)"
 
 set /p commit_msg=<"%TEMP%\gpr_msg.txt"
 del "%TEMP%\gpr_msg.txt" 2>nul

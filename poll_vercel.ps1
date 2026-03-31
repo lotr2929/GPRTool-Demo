@@ -50,6 +50,22 @@ while ($waited -le $maxWait) {
         } elseif ($state -eq 'ERROR' -or $state -eq 'CANCELED') {
             Write-Host ""
             Write-Host "  Deployment $state after $timer." -ForegroundColor Red
+            Write-Host ""
+            Write-Host "  --- Build Log ---" -ForegroundColor Yellow
+            try {
+                $uid = $latest.uid
+                $logUrl = "https://api.vercel.com/v3/deployments/$uid/events"
+                $events = Invoke-RestMethod -Uri $logUrl -Headers $headers -Method Get -ErrorAction Stop
+                $logLines = $events | Where-Object { $_.type -eq 'stdout' -or $_.type -eq 'stderr' -or $_.type -eq 'command' } | Select-Object -Last 30
+                foreach ($line in $logLines) {
+                    $text = if ($line.payload.text) { $line.payload.text } else { $line.payload }
+                    $color = if ($line.type -eq 'stderr') { 'Red' } else { 'Gray' }
+                    Write-Host "  $text" -ForegroundColor $color
+                }
+            } catch {
+                Write-Host "  (Could not fetch build log: $($_.Exception.Message))" -ForegroundColor Yellow
+            }
+            Write-Host "  -----------------" -ForegroundColor Yellow
             exit 1
         }
 
