@@ -1,8 +1,8 @@
 # GPRTool — Developer Guide
 
-**Version**: 1.0  
-**Last updated**: 2026-03-29  
-**Applies to**: All AI and human contributors  
+**Version**: 1.1
+**Last updated**: 2026-03-31
+**Applies to**: All AI and human contributors
 **Read alongside**: `_map.md` (file structure), `_design.md` (design decisions)
 
 ---
@@ -11,7 +11,7 @@
 
 > **Touch it, extract it.**
 
-When you open a section of `index.html` to develop or fix a feature, extract that section into its own JS file in `frontend/js/` as part of that same piece of work. Do not add new code to `index.html`. Do not refactor code you are not currently working on.
+When you open a section of `index.html` to develop or fix a feature, extract that section into its own JS file in `app/js/` as part of that same piece of work. Do not add new code to `index.html`. Do not refactor code you are not currently working on.
 
 `index.html` should eventually be ~50 lines: a shell that imports modules and nothing else.
 
@@ -22,10 +22,10 @@ When you open a section of `index.html` to develop or fix a feature, extract tha
 > **Current state**: see `_map.md` — it is the authoritative record of what files exist now.
 > This section defines the **target structure** we are building toward incrementally.
 
-The target for `frontend/js/` when fully extracted:
+The target for `app/js/` when fully extracted:
 
 ```
-frontend/js/
+app/js/
   lib/                    ← third-party libraries — NEVER edit
     three.module.js
     OrbitControls.js
@@ -56,7 +56,7 @@ frontend/js/
 
 ## 3. MODULE RULES
 
-Every JS file in `frontend/js/` (except `lib/`) must follow these rules:
+Every JS file in `app/js/` (except `lib/`) must follow these rules:
 
 ### 3.1 Declare dependencies at the top
 ```js
@@ -226,7 +226,7 @@ All localStorage keys are prefixed `gprtool-`. Registered keys:
 | `gprtool-np2d-state` | `{right, bottom, w, visible}` | 2D north point position, width, visibility |
 | `gprtool-np3d-state` | `{corner, size, visible}` | 3D compass corner, size, visibility |
 
-When adding a new persisted value, add it to this table and use the `gprtool-` prefix.  
+When adding a new persisted value, add it to this table and use the `gprtool-` prefix.
 **Do not create new keys for values that belong in an existing key's object.**
 
 ---
@@ -238,7 +238,7 @@ When adding a new persisted value, add it to this table and use the `gprtool-` p
 - **Y axis = up**
 - `depthTest: false` + high `renderOrder` for any overlay geometry that must always be visible
 - Dispose geometries and materials when removing objects from the scene
-- Do not call `getBoundingClientRect()` on the canvas for Three.js coordinate math — use `renderer.domElement.getBoundingClientRect()` only for converting screen → NDC
+- Do not call `getBoundingClientRect()` on the canvas for Three.js coordinate math — use `renderer.domElement.getBoundingClientRect()` only for converting screen to NDC
 
 ---
 
@@ -265,7 +265,7 @@ When extracting a section from `index.html` into its own module:
 - Do not call `getBoundingClientRect()` on elements that have CSS `transform` applied
 - Do not set `isDragging = true` on `pointerdown`
 - Do not create localStorage keys without adding them to the table in Section 7
-- Do not import Three.js from CDN — use the local copy in `js/lib/`
+- Do not import Three.js from CDN — use the local copy in `app/js/lib/`
 - Do not subdivide `js/` with new folders unless a feature has 3+ files of its own
 
 ---
@@ -275,7 +275,7 @@ When extracting a section from `index.html` into its own module:
 `repomix-output.xml` is a snapshot of the repo for feeding to AI tools that don't have filesystem access. Regenerate it before each session with an external AI tool:
 
 ```
-repomix --output repomix-output.xml
+repomix --output _dev/repomix-output.xml
 ```
 
 It is generated, not maintained. Never edit it by hand.

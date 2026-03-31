@@ -1,17 +1,13 @@
 @echo off
-REM GPRTool-Demo — start.bat
-REM Starts the local frontend server and opens the browser.
-REM No backend required (browser-only app on Vercel).
+REM GPRTool — start.bat
+REM Starts the local dev server and opens the browser.
 
-echo Starting GPRTool-Demo...
+echo Starting GPRTool...
 
-REM Start frontend dev server
-start "GPRTool Frontend" cmd /k "cd /d %~dp0frontend && python server.py"
+start "GPRTool" cmd /k "cd /d %~dp0app && python -m http.server 8000"
 
-REM Brief pause for server to start
 timeout /t 2 /nobreak >nul
 
-REM Open in default browser
 start "" http://localhost:8000
 
 echo GPRTool running at http://localhost:8000

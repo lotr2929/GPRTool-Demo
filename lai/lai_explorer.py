@@ -8,14 +8,14 @@ extracts geographic origin, and flags tropical/subtropical
 species by actual measurement latitude (not just name keywords).
 
 Outputs:
-    GPR - LAI Values/LAI_combined_clean.csv     main output
-    GPR - LAI Values/LAI_tropical_subset.csv    tropical/subtropical only
-    GPR - LAI Values/LAI_explorer_report.txt    summary report
+    lai/LAI_combined_clean.csv     main output
+    lai/LAI_tropical_subset.csv    tropical/subtropical only
+    lai/LAI_explorer_report.txt    summary report
 
 Usage (PowerShell):
-    cd C:\\GPRToolDemo
+    cd C:\\Users\\263350F\\_myProjects\\GPRTool-Demo
     .venv\\Scripts\\Activate.ps1
-    python lai_explorer.py
+    python lai\\lai_explorer.py
 
 Author: Boon + Claude
 Date: 2026-03-17
@@ -28,7 +28,7 @@ from collections import defaultdict
 
 # ── Paths ──────────────────────────────────────────────────────────────────────
 BASE_DIR       = os.path.dirname(os.path.abspath(__file__))
-LAI_DIR        = os.path.join(BASE_DIR, "GPR - LAI Values")
+LAI_DIR        = BASE_DIR
 ORNL_CSV       = os.path.join(LAI_DIR, "LAI Database - ONRL.csv")
 TRY_CSV        = os.path.join(LAI_DIR, "LAI Database - TRY.csv")
 TRY_RAW        = os.path.join(LAI_DIR, "TRY Database", "37339.txt")
@@ -314,10 +314,10 @@ def write_report(aggregated, multi, counts, filepath):
     a(f"  Unique single species:       {len(aggregated):,}")
     a(f"  Multi-species entries:       {len(multi):,}  (set aside)")
     a(f"  In multiple source DBs:      {len(multi_src):,}")
-    a(f"  Well-measured (≥5 obs):      {len(well_done):,}")
+    a(f"  Well-measured (>=5 obs):     {len(well_done):,}")
     a("")
     a("── TROPICAL / SUBTROPICAL FILTER ─────────────────────────────")
-    a(f"  Latitude band used:          {LAT_MIN}° to {LAT_MAX}°")
+    a(f"  Latitude band used:          {LAT_MIN} to {LAT_MAX}")
     a(f"  Flagged by latitude:         {len(trop_lat):,}")
     a(f"  Flagged by keyword only:     {len(trop_kw):,}")
     a(f"  Total tropical relevant:     {len(tropical):,}")
@@ -330,11 +330,11 @@ def write_report(aggregated, multi, counts, filepath):
               f"mean={sp['mean_lai']:.2f}  n={sp['measurement_count']}")
     a("")
     a("── LAI DISTRIBUTION (all species) ───────────────────────────")
-    bins = [(0,2,"Low  0–2"), (2,4,"Mid  2–4"),
-            (4,7,"High 4–7"), (7,99,"Very high 7+")]
+    bins = [(0,2,"Low  0-2"), (2,4,"Mid  2-4"),
+            (4,7,"High 4-7"), (7,99,"Very high 7+")]
     for lo, hi, label in bins:
         count = sum(1 for x in all_vals if lo <= x < hi)
-        bar   = "█" * (count // max(1, len(all_vals) // 40))
+        bar   = "X" * (count // max(1, len(all_vals) // 40))
         a(f"  {label}:  {count:>5,}  {bar}")
     a("")
     a("── TOP 30 SPECIES OVERALL ────────────────────────────────────")
@@ -349,11 +349,11 @@ def write_report(aggregated, multi, counts, filepath):
     a("")
     a("── NEXT STEPS ────────────────────────────────────────────────")
     a("  1. Open LAI_tropical_subset.csv")
-    a("     → Boon to mark which species suit Perth/Singapore context")
-    a("     → Add column: category (Tree/Shrub/Grass/Groundcover/GreenRoof)")
+    a("     -> Boon to mark which species suit Perth/Singapore context")
+    a("     -> Add column: category (Tree/Shrub/Grass/Groundcover/GreenRoof)")
     a("  2. Cross-reference with Tan & Sia 2009 GPR guidebook")
-    a("  3. Finalised subset becomes backend/lai_data.py lookup table")
-    a("  4. That feeds gpr.py calculation engine")
+    a("  3. Finalised subset becomes lai/LAI_categorised.csv")
+    a("  4. That feeds app plants_free.json and future Supabase pro tier")
     a("=" * 65)
 
     report_text = "\n".join(lines)

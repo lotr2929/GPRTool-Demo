@@ -11,13 +11,13 @@ Multi-species and community entries are tagged as benchmarks.
 Anything unrecognised is flagged REVIEW for Boon to annotate.
 
 Usage (PowerShell):
-    cd C:\\GPRToolDemo
+    cd C:\\Users\\263350F\\_myProjects\\GPRTool-Demo
     .venv\\Scripts\\Activate.ps1
-    python lai_categorise.py
+    python lai\\lai_categorise.py
 
 Outputs:
-    GPR - LAI Values/LAI_categorised.csv
-    GPR - LAI Values/LAI_category_report.txt
+    lai/LAI_categorised.csv
+    lai/LAI_category_report.txt
 
 Author: Boon + Claude
 Date: 2026-03-17
@@ -28,7 +28,7 @@ import os
 from collections import Counter
 
 BASE_DIR  = os.path.dirname(os.path.abspath(__file__))
-LAI_DIR   = os.path.join(BASE_DIR, "GPR - LAI Values")
+LAI_DIR   = BASE_DIR
 IN_CSV    = os.path.join(LAI_DIR, "LAI_combined_clean.csv")
 OUT_CSV   = os.path.join(LAI_DIR, "LAI_categorised.csv")
 OUT_RPT   = os.path.join(LAI_DIR, "LAI_category_report.txt")
