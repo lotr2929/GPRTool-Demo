@@ -36,7 +36,7 @@ let npEl, npRotEl, npCtxEl, npVP;
 let npW = NP_BASE_W;
 let getState;
 
-let designNorthDeg = null;  // null = not set; decimal degrees otherwise (+ve = E/clockwise)
+let designNorthDeg = 0;  // decimal degrees (+ve = E/clockwise); 0 = aligned to True North
 let dnGroupEl = null;
 let dnLabelEl = null;
 
@@ -153,7 +153,7 @@ function restoreState() {
       if (saved.visible === false) npEl.style.display = 'none';
       if (saved.right !== undefined) applyPos(saved.right, saved.bottom);
       else                           resetPosInternal();
-      if (saved.dn !== undefined && saved.dn !== null) applyDesignNorth(saved.dn);
+      applyDesignNorth(saved.dn !== undefined && saved.dn !== null ? saved.dn : 0);
     } else {
       resetPosInternal();
     }
