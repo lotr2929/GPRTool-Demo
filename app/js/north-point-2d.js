@@ -408,16 +408,15 @@ export function updateNorthRotation() {
     camDeg = Math.atan2(_npN.x - _npO.x, _npN.y - _npO.y) * 180 / Math.PI;
   }
 
-  // camDeg already encodes the full view rotation (including rotate2D = designNorthAngle)
-  // No extra offset needed — compass tracks view directly
-  const iconRot = camDeg;
+  // Compass housing matches grid rotation — same angle as gridHelper.rotation.y
+  // No camera involved — compass is fixed to design world, not camera view
+  const iconRot = designNorthAngle;
   npRotEl.style.transform = `rotate(${iconRot}deg)`;
 
-  // TN needle rotates independently within housing to point True North
-  // Net screen angle of needle = iconRot + needleLocal = camDeg + globalNorthAngle
-  // → needleLocal = globalNorthAngle (since iconRot = camDeg)
+  // TN needle points True North within housing
+  // needleLocal = globalNorthAngle - designNorthAngle
   if (tnNeedleEl) {
-    const needleLocal = globalNorthAngle;
+    const needleLocal = globalNorthAngle - designNorthAngle;
     tnNeedleEl.setAttribute('transform', `rotate(${needleLocal}, ${SVG_CX}, ${SVG_CY})`);
   }
 
@@ -433,7 +432,7 @@ export function updateNorthRotation() {
     const SIDE_X    = 10;
 
     // Clash is between TN needle and DN label (at top) — use needle local angle
-    const needleLocalForClash = globalNorthAngle;
+    const needleLocalForClash = globalNorthAngle - designNorthAngle;
     let normTN = ((needleLocalForClash % 360) + 360) % 360;
     if (normTN > 180) normTN -= 360;
 

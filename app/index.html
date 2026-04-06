@@ -1880,10 +1880,8 @@
               base2DhalfH     =  halfH;
               camera2D.updateProjectionMatrix();
             }
-            // Rotate view so DN points up — don't reset designNorthAngle
-            rotate2D = getDesignNorthAngle() * Math.PI / 180;
             update2DCamera();
-            showFeedback('2D view reset — DN pointing up');
+            showFeedback('2D view reset');
           } else {
             const target = importedModel || siteBoundaryLine;
             if (target) fit3DCamera(new THREE.Box3().setFromObject(target));

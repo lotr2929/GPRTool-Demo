@@ -1,10 +1,10 @@
-# CLAUDE.md — GPRTool-Demo
+# CLAUDE.md -- GPRTool
 
 ## Before you do anything
 
 Read both files in `_dev/` before starting any work:
-- `_dev_guide.md` — coding standards and architecture rules
-- `_map.md` — current file structure and what everything does
+- `_dev_guide.md` -- coding standards and architecture rules
+- `_map.md` -- current file structure and what everything does
 
 Everything you need is in `_dev/`.
 
@@ -13,9 +13,9 @@ Everything you need is in `_dev/`.
 1. Do not write, edit, or move any file without explicit permission.
 2. Format every response as a numbered list. Number each distinct
    statement or point so Boon can reference them by number.
-   Use sub-lists (1a, 1b…) for related points under one item.
+   Use sub-lists (1a, 1b...) for related points under one item.
    Reset numbering to 1 at the start of each new response.
-3. Use MCP filesystem tools for all file operations. Do not use bash —
+3. Use MCP filesystem tools for all file operations. Do not use bash --
    it runs on Linux and cannot reach this Windows filesystem.
 4. Find the simplest solution that fits the existing logic and structure
    of the code. Fewer files, fewer dependencies, fewer moving parts.
@@ -28,11 +28,11 @@ I am going to:
 - [write / edit] [function / section]
 - in [filename and path]
 
-It will [describe plainly what it does — what it draws, calculates,
+It will [describe plainly what it does -- what it draws, calculates,
 or changes. State the format: SVG, JS function, CSS rule, etc.]
 
 This will also affect:
-- [other file] — [what changes there]
+- [other file] -- [what changes there]
 
 ## Coding standards
 
@@ -40,7 +40,7 @@ This will also affect:
 - LAI pipeline: Python only. Lives in `lai/`. Never ships to browser.
 - Icons: always inline SVG. Never `<img>` with PNG.
 - Photos and rasters: `app/assets/images/` only.
-- Third-party libraries: `app/js/lib/` — never edit these files.
+- Third-party libraries: `app/js/lib/` -- never edit these files.
 - The north point SVG is defined once and used by both viewports.
 
 ## Debugging

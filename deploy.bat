@@ -107,7 +107,7 @@ if %errorlevel% neq 0 (
     echo.
     echo ========================================
     echo  Deployment failed or timed out.
-    echo  Check: https://vercel.com/lotr2929-7612s-projects/gpr-tool-demo
+    echo  Check: https://vercel.com/lotr2929-7612s-projects/gprtool
     echo ========================================
     pause
     exit /b 1
@@ -116,7 +116,7 @@ if %errorlevel% neq 0 (
 echo.
 echo ========================================
 echo  Deploy complete!
-echo  https://gprtool-demo.vercel.app
+echo  https://gprtool.vercel.app
 echo ========================================
 echo.
 pause
