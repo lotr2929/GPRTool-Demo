@@ -94,13 +94,14 @@ function parseNorthAngle(str) {
   return null;
 }
 
-// ── Angle formatting ──────────────────────────────────────────
-// Returns a compact display string, e.g. "7°22' W" or "7° E" or "0°"
+// ── Angle formatting ─────────────────────────────────────────
+// formatNorthAngle: spaced format for input fields (e.g. "7°22' W")
+// formatNorthAngleCompact: no spaces for the small compass label (e.g. "7°22'W")
 
 function formatNorthAngle(deg) {
   if (deg === 0 || deg === null) return '0°';
-  const abs     = Math.abs(deg);
-  const dir     = deg > 0 ? 'E' : 'W';
+  const abs      = Math.abs(deg);
+  const dir      = deg > 0 ? 'E' : 'W';
   const wholeDeg = Math.floor(abs);
   const minFrac  = (abs - wholeDeg) * 60;
   const wholeMin = Math.round(minFrac);
@@ -108,6 +109,19 @@ function formatNorthAngle(deg) {
   if (wholeMin === 0)  return `${wholeDeg}° ${dir}`;
   if (wholeMin === 60) return `${wholeDeg + 1}° ${dir}`;
   return `${wholeDeg}°${wholeMin}' ${dir}`;
+}
+
+function formatNorthAngleCompact(deg) {
+  if (deg === 0 || deg === null) return '0°';
+  const abs      = Math.abs(deg);
+  const dir      = deg > 0 ? 'E' : 'W';
+  const wholeDeg = Math.floor(abs);
+  const minFrac  = (abs - wholeDeg) * 60;
+  const wholeMin = Math.round(minFrac);
+
+  if (wholeMin === 0)  return `${wholeDeg}°${dir}`;
+  if (wholeMin === 60) return `${wholeDeg + 1}°${dir}`;
+  return `${wholeDeg}°${wholeMin}'${dir}`;
 }
 
 // ── Size / position helpers ───────────────────────────────────
@@ -184,7 +198,7 @@ function applyDesignNorth(deg) {
 
   if (dnGroupEl && dnLabelEl) {
     // Label shows tilt of DN relative to TN
-    dnLabelEl.textContent = formatNorthAngle(designNorthAngle - globalNorthAngle);
+    dnLabelEl.textContent = formatNorthAngleCompact(designNorthAngle - globalNorthAngle);
   }
 
   // Show / hide "Clear Design North" menu item
@@ -197,7 +211,7 @@ function applyDesignNorth(deg) {
 function applyGlobalNorth(deg) {
   globalNorthAngle = deg ?? 0;
   // Label shows tilt of DN relative to TN
-  if (dnLabelEl) dnLabelEl.textContent = formatNorthAngle(designNorthAngle - globalNorthAngle);
+  if (dnLabelEl) dnLabelEl.textContent = formatNorthAngleCompact(designNorthAngle - globalNorthAngle);
   saveState();
 }
 
@@ -496,9 +510,9 @@ export function updateNorthRotation() {
     dnGroupEl.style.display = designNorthAngle !== globalNorthAngle ? '' : 'none';
 
     // Shift label sideways if TN arrow is near compass top (where D label sits)
-    const LABEL_Y   = 15;  // nudged closer and higher
-    const CLASH_DEG = 65;
-    const SIDE_X    = 5;   // small offset keeps text inside compass bounds at font-size 6
+    const LABEL_Y   = 13;  // nudged closer and higher
+    const CLASH_DEG = 35;
+    const SIDE_X    = -4;   // small offset keeps text inside compass bounds at font-size 6
 
     // Clash is between TN needle and DN label (at top) — use needle local angle
     const needleLocalForClash = globalNorthAngle - designNorthAngle;
