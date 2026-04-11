@@ -51,6 +51,7 @@ let rotateMode      = false;
 let isRotating      = false;
 let rotateStartAngle = 0;
 let rotateStartDN    = 0;
+let rotateStartGlobalNorth = 0;  // TN captured at drag-start — changed by "Rotate N Point"
 
 let isResizing   = false;
 let resizeHandle = null;
@@ -323,6 +324,87 @@ function onClickOutsideDNInput(e) {
   if (inp && !inp.contains(e.target) && !npEl.contains(e.target)) hideDNInput();
 }
 
+// ── True North input field (mirrors showDNInput but targets globalNorthAngle) ────────
+
+function showTNInput(autoFocus = true) {
+  let inp = document.getElementById('np-tn-input');
+  if (!inp) {
+    inp = document.createElement('div');
+    inp.id = 'np-tn-input';
+    inp.innerHTML = `
+      <div class="np-dn-title">True North Offset</div>
+      <input type="text" id="np-tn-field" placeholder="e.g. 7, 7.4, 7\u00b022', 7W" autocomplete="off" spellcheck="false">
+      <div class="np-dn-hint">+ or E = east &nbsp;|&nbsp; - or W = west</div>
+    `;
+    document.body.appendChild(inp);
+
+    document.getElementById('np-tn-field').addEventListener('keydown', e => {
+      if (e.key === 'Enter') {
+        const val = e.target.value.trim();
+        const deg = parseNorthAngle(val);
+        if (deg !== null) {
+          applyGlobalNorth(deg);
+          hideTNInput();
+        } else {
+          e.target.classList.add('np-dn-invalid');
+          setTimeout(() => e.target.classList.remove('np-dn-invalid'), 600);
+        }
+        e.preventDefault();
+      }
+      if (e.key === 'Escape') { hideTNInput(); e.stopPropagation(); }
+    });
+
+    document.getElementById('np-tn-field').addEventListener('input', e => {
+      e.target.classList.remove('np-dn-invalid');
+    });
+  }
+
+  const rect = npEl.getBoundingClientRect();
+  inp.style.display = 'block';
+  inp.style.right   = (window.innerWidth  - rect.left + 8) + 'px';
+  inp.style.bottom  = (window.innerHeight - rect.bottom)   + 'px';
+
+  const field = document.getElementById('np-tn-field');
+  field.value = globalNorthAngle !== 0 ? formatNorthAngle(globalNorthAngle) : '';
+  field.classList.remove('np-dn-invalid');
+  if (autoFocus) requestAnimationFrame(() => field.focus());
+
+  document.removeEventListener('keydown', onTNKeyCapture, true);
+  document.addEventListener('keydown', onTNKeyCapture, true);
+  document.removeEventListener('click', onClickOutsideTNInput);
+  setTimeout(() => { document.addEventListener('click', onClickOutsideTNInput); }, 50);
+}
+
+function hideTNInput() {
+  const inp = document.getElementById('np-tn-input');
+  if (inp) inp.style.display = 'none';
+  document.removeEventListener('click', onClickOutsideTNInput);
+  document.removeEventListener('keydown', onTNKeyCapture, true);
+  exitRotateMode();
+}
+
+function onTNKeyCapture(e) {
+  const inp = document.getElementById('np-tn-input');
+  if (!inp || inp.style.display === 'none') return;
+  if (e.key === 'Escape') { e.stopPropagation(); e.preventDefault(); hideTNInput(); }
+  if (e.key === 'Enter') {
+    e.stopPropagation(); e.preventDefault();
+    const field = document.getElementById('np-tn-field');
+    if (!field) return;
+    const deg = parseNorthAngle(field.value.trim());
+    if (deg !== null) { applyGlobalNorth(deg); hideTNInput(); }
+    else {
+      field.classList.add('np-dn-invalid');
+      setTimeout(() => field.classList.remove('np-dn-invalid'), 600);
+    }
+  }
+}
+
+function onClickOutsideTNInput(e) {
+  const inp = document.getElementById('np-tn-input');
+  if (inp && !inp.contains(e.target) && !npEl.contains(e.target)) hideTNInput();
+}
+
 // ── SVG injection ─────────────────────────────────────────────
 // Arrow geometry (local coords, pointing straight up before group rotation):
 //   Circle centre: (32, 40), radius 22 — edge at y=18
@@ -346,10 +428,10 @@ function injectDNGroup(svg) {
   shaft.setAttribute('stroke', '#4a8a4a');
   shaft.setAttribute('stroke-width', '0.75');
 
-  // Dot — slightly before the top edge (cy=22)
+  // Dot — sits just outside the circle top (cy=15: bottom of dot at y=18 = circle top)
   const head = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
   head.setAttribute('cx', SVG_CX);
-  head.setAttribute('cy', '24');
+  head.setAttribute('cy', '15');
   head.setAttribute('r', '3');
   head.setAttribute('fill', '#4a8a4a');
 
@@ -390,27 +472,14 @@ export function resetNorthPos() {
 
 export function updateNorthRotation() {
   if (!npRotEl || !npEl || npEl.style.display === 'none') return;
-  const { currentMode, camera2D, camera3D, controls3D, pan2D } = getState();
+  const { currentMode, camera2D, camera3D, controls3D, pan2D, rotate2D } = getState();
 
-  let camDeg;
-  if (currentMode === '3d') {
-    // Horizontal azimuth only — ignore camera elevation
-    // Vector from camera to target, flattened to XZ plane
-    const dx = controls3D.target.x - camera3D.position.x;
-    const dz = controls3D.target.z - camera3D.position.z;
-    // atan2(-dx, dz): camera looking north (dz<0) → 0°, looking east (dx>0) → -90°
-    camDeg = Math.atan2(-dx, dz) * 180 / Math.PI;
-  } else {
-    const cam    = camera2D;
-    const target = new THREE.Vector3(pan2D.x, 0, pan2D.z);
-    _npO.copy(target).project(cam);
-    _npN.copy(target).add(new THREE.Vector3(0, 0, -500)).project(cam);
-    camDeg = Math.atan2(_npN.x - _npO.x, _npN.y - _npO.y) * 180 / Math.PI;
-  }
-
-  // Compass housing matches grid rotation — same angle as gridHelper.rotation.y
-  // No camera involved — compass is fixed to design world, not camera view
-  const iconRot = designNorthAngle;
+  // Bug 2 fix: in 2D mode, counter-rotate housing by viewport rotation so it
+  // stays visually aligned with the grid as the user pans/rotates the plan view.
+  // In 3D mode the gizmo (north-point-3d.js) tracks the camera; housing stays fixed to DN.
+  const iconRot = currentMode === '2d'
+    ? designNorthAngle - (rotate2D * 180 / Math.PI)
+    : designNorthAngle;
   npRotEl.style.transform = `rotate(${iconRot}deg)`;
 
   // TN needle points True North within housing
@@ -427,7 +496,7 @@ export function updateNorthRotation() {
     dnGroupEl.style.display = designNorthAngle !== globalNorthAngle ? '' : 'none';
 
     // Shift label sideways if TN arrow is near compass top (where D label sits)
-    const LABEL_Y   = 14;
+    const LABEL_Y   = 9;  // sits 3px above dot at cy=15, close to DN pointer
     const CLASH_DEG = 65;
     const SIDE_X    = 10;
 
@@ -534,7 +603,7 @@ export function initNorthPoint2D(getStateCallback) {
   document.getElementById('np-ctx-rotate-np')?.addEventListener('click', () => {
     if (npCtxEl) npCtxEl.style.display = 'none';
     enterRotateMode();
-    showDNInput(true);
+    showTNInput(true);  // Bug 1 fix: set TN, not DN
   });
 
 }
@@ -616,10 +685,10 @@ function onDragDown(e) {
   if (e.button !== 0) return;
 
   if (rotateMode) {
-    // In rotate mode: drag rotates the icon instead of moving it
+    // In rotate mode: drag rotates TN (globalNorthAngle) instead of moving compass
     isRotating       = true;
     rotateStartAngle = angleFromNPCenter(e.clientX, e.clientY);
-    rotateStartDN    = designNorthAngle;
+    rotateStartGlobalNorth = globalNorthAngle;  // Bug 1 fix: capture TN, not DN
     npEl.setPointerCapture(e.pointerId);
     e.stopPropagation();
     return;
@@ -643,11 +712,11 @@ function onDragDown(e) {
 function handleDrag(e) {
   if (isRotating) {
     const cur   = angleFromNPCenter(e.clientX, e.clientY);
-    // Negate: dragging clockwise (E) sets DN east of TN, displayed as positive E
-    const newDN = rotateStartDN - (cur - rotateStartAngle);
-    applyDesignNorth(newDN);
-    const field = document.getElementById('np-dn-field');
-    if (field) field.value = formatNorthAngle(newDN);
+    // Bug 1 fix: drag sets TN (globalNorthAngle), not DN
+    const newGN = rotateStartGlobalNorth - (cur - rotateStartAngle);
+    applyGlobalNorth(newGN);
+    const field = document.getElementById('np-tn-field');
+    if (field) field.value = formatNorthAngle(newGN);
     return;
   }
   if (!dragPending && !isDragging) return;

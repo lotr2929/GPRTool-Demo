@@ -1,0 +1,115 @@
+# Project Map: GPRTool
+Generated: Tue, 7 Apr 2026, 11:55 am  (0.1s)
+Files:     94
+
+[dir]  _archive/
+  [dir]  backend/
+    [file] app.py (1.3 KB)
+    [file] exporters.py (389 B)
+    [file] geometry.py (1.2 KB)
+  [file] accdb_export.py (5.0 KB)
+  [file] camera.js (768 B)  -- camera.js — Stable Perspective Camera for Three.js
+  [file] close.bat (643 B)
+  [file] GPRTool_Development_Plan.docx (41.8 KB)
+  [file] lai_count.py (1.2 KB)
+  [file] Linux Login.txt (37 B)
+  [file] main.js (16.2 KB)  -- main.js — GPRTool (Boon Ong / Curtin University)
+  [file] Modelfile (76 B)
+  [file] README.md (1.9 KB)  -- _archive — GPRTool-Demo
+  [file] requirements.txt (26 B)
+  [file] SketchUp layout.png (131.5 KB)
+  [file] start.bat.old (1.2 KB)
+  [file] test_site_scratch.geojson (857 B)
+[dir]  _context/
+  [file] chat.md (103.7 KB)  -- Session Log -- GPRTool
+[dir]  _dev/
+  [file] _design.md (47.5 KB)  -- GPRTool — Design & Development Guide
+  [file] _dev_guide.md (10.5 KB)  -- GPRTool — Developer Guide
+  [file] _journal.md (13.5 KB)  -- GPRTool Development Journal
+  [file] _map.md (9.0 KB)  -- GPRTool — Repository Map
+  [file] _session.md (3.7 KB)  -- GPRTool — Session Status
+  [file] repomix-output.xml (328.6 KB)
+  [file] Three.js Grid Orientation.md (2.1 KB)
+[dir]  app/
+  [dir]  images/
+    [dir]  Backup Images/
+      [file] gpr-logo01.png (142.5 KB)
+      [file] gpr-logo02.png (455.4 KB)
+      [file] gpr-logo4.png (419.4 KB)
+    [file] gpr-logo.png (829.4 KB)
+  [dir]  js/
+    [file] north-point-2d.js (22.9 KB)
+    [file] north-point-3d.js (10.7 KB)
+    [file] OrbitControls.js (4.8 KB)  -- Simplified, stable OrbitControls
+    [file] three.module.js (1.2 MB)
+  [dir]  textures/
+    [file] plywood.webp (342.5 KB)
+  [file] body.html (20.9 KB)  -- Main Content Area
+  [file] favicon.ico (11.9 KB)
+  [file] header.html (4.8 KB)  -- Undo / Redo arrows — far left, always visible
+  [file] index.html (124.9 KB)
+  [file] plants_free.json (26.8 KB)
+  [file] styles.css (25.6 KB)
+[dir]  lai/
+  [dir]  accdb_export/
+    [file] accdb_schema.txt (384 B)
+    [file] MAIN DATABASE.csv (35 B)
+  [dir]  ORNL DAAC-Global Database of LAI_Woody Plants (1932-2011)/
+    [dir]  comp/
+      [file] LAI_Database_Reference_List.pdf (383.6 KB)
+      [file] LAI_Woody_Plants.pdf (245.7 KB)
+    [dir]  data/
+    [dir]  guide/
+      [file] Online_Version_LAI_Woody_Plants.html (190 B)
+  [dir]  TRY Database/
+    [file] 37339.txt (5.8 MB)
+    [file] TRY_6.0_Data_Release_Notes.pdf (123.9 KB)
+    [file] TRY_Intellectual_Property_Guidelines.pdf (116.6 KB)
+  [file] GreenPlotRatio_LAI Values.csv (988 B)
+  [file] Journal Papers - LAI and GPP for GPR.zip (15.9 MB)
+  [file] LAI (ORNL DAAC_Woody Plants 1932-2011)_reduced.xlsx (235.5 KB)
+  [file] LAI (ORNL DAAC_Woody Plants 1932-2011).csv (822.5 KB)
+  [file] LAI (ORNL DAAC_Woody Plants 1932-2011).xlsx (490.5 KB)
+  [file] LAI (TRY Database)_worksheet.xlsx (610.0 KB)
+  [file] LAI (TRY Database).xlsx (944.4 KB)
+  [file] LAI Database - ONRL.csv (82.9 KB)
+  [file] LAI Database - TRY.csv (115.7 KB)
+  [file] LAI Database (Combined).xlsx (117.5 KB)
+  [file] LAI Database1.accdb (15.0 MB)
+  [file] LAI Values.csv (1.2 KB)
+  [file] lai_categorise.py (10.5 KB)
+  [file] LAI_categorised.csv (106.8 KB)
+  [file] LAI_category_report.txt (3.0 KB)
+  [file] LAI_combined_clean.csv (99.4 KB)
+  [file] LAI_DATABASE_STRATEGY.md (18.6 KB)  -- GPRTool LAI Database Strategy
+  [file] LAI_explorer_report.txt (6.3 KB)
+  [file] lai_explorer.py (17.5 KB)
+  [file] LAI_tropical_subset.csv (16.7 KB)
+  [file] LAI_Woody_Plants_1231.zip (734.2 KB)
+  [file] LAI.csv (1.2 KB)
+  [file] Material Library.csv (25 B)
+  [file] merge_singapore_lai.py (7.2 KB)
+  [file] Tan, Sia - 2009 - LAI of tropical plants - a Guidebook on its use in the calculation of GPR.pdf (5.3 MB)
+[dir]  projects/
+  [file] 30_Beaufort_Street_GPR_Recommendations.docx (32.8 KB)
+  [file] 30_beaufort_street_parcel.geojson (1.5 KB)
+  [file] 30_Beaufort_Street_Site_Analysis.docx (21.6 KB)
+  [file] GPR Recommendations #1.pdf (138.6 KB)
+  [file] GPR Recommendations #2.pdf (128.7 KB)
+  [file] GPR Recommendations #3.pdf (148.6 KB)
+  [file] GPR Recommendations #4.pdf (128.3 KB)
+  [file] GPR Recommendations #5.pdf (93.5 KB)
+  [file] GPR Recommendations #6.pdf (148.7 KB)
+  [file] README.md (4.8 KB)  -- GPRTool Test Data
+  [file] test_8storey_site.obj (2.4 KB)
+  [file] test_building_import.dxf (9.5 KB)
+  [file] test_cube.dxf (1.8 KB)
+  [file] test_cube.obj (790 B)
+  [file] test_site_contours.geojson (3.3 KB)
+  [file] test-tower-clean.obj (747 B)
+  [file] test-tower.obj (2.8 KB)
+[file] CLAUDE.md (1.9 KB)  -- CLAUDE.md -- GPRTool
+[file] deploy.bat (3.6 KB)
+[file] deploy.env (170 B)
+[file] poll_vercel.ps1 (3.2 KB)  -- poll_vercel.ps1 - called by deploy.bat after git push
+[file] start.bat (346 B)
