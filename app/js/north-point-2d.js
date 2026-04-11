@@ -496,7 +496,7 @@ export function updateNorthRotation() {
     dnGroupEl.style.display = designNorthAngle !== globalNorthAngle ? '' : 'none';
 
     // Shift label sideways if TN arrow is near compass top (where D label sits)
-    const LABEL_Y   = 12;  // 3-unit gap above dot at cy=18, close to DN pointer
+    const LABEL_Y   = 16;  // baseline at dot (cy=18, top y=15) — label sits on DN arrow tip
     const CLASH_DEG = 65;
     const SIDE_X    = 10;
 
