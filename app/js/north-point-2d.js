@@ -183,8 +183,8 @@ function applyDesignNorth(deg) {
   designNorthAngle = deg;
 
   if (dnGroupEl && dnLabelEl) {
-    // Label shows tilt of DN from TN = designNorthAngle
-    dnLabelEl.textContent = formatNorthAngle(designNorthAngle);
+    // Label shows tilt of DN relative to TN
+    dnLabelEl.textContent = formatNorthAngle(designNorthAngle - globalNorthAngle);
   }
 
   // Show / hide "Clear Design North" menu item
@@ -196,8 +196,8 @@ function applyDesignNorth(deg) {
 
 function applyGlobalNorth(deg) {
   globalNorthAngle = deg ?? 0;
-  // Label shows tilt of DN from TN = designNorthAngle
-  if (dnLabelEl) dnLabelEl.textContent = formatNorthAngle(designNorthAngle);
+  // Label shows tilt of DN relative to TN
+  if (dnLabelEl) dnLabelEl.textContent = formatNorthAngle(designNorthAngle - globalNorthAngle);
   saveState();
 }
 
@@ -713,7 +713,7 @@ function handleDrag(e) {
   if (isRotating) {
     const cur   = angleFromNPCenter(e.clientX, e.clientY);
     // Bug 1 fix: drag sets TN (globalNorthAngle), not DN
-    const newGN = rotateStartGlobalNorth - (cur - rotateStartAngle);
+    const newGN = rotateStartGlobalNorth + (cur - rotateStartAngle);  // + so needle follows drag direction
     applyGlobalNorth(newGN);
     const field = document.getElementById('np-tn-field');
     if (field) field.value = formatNorthAngle(newGN);
