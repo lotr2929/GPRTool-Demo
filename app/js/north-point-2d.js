@@ -496,7 +496,7 @@ export function updateNorthRotation() {
     dnGroupEl.style.display = designNorthAngle !== globalNorthAngle ? '' : 'none';
 
     // Shift label sideways if TN arrow is near compass top (where D label sits)
-    const LABEL_Y   = 19;  // nudged closer and higher
+    const LABEL_Y   = 17;  // nudged closer and higher
     const CLASH_DEG = 65;
     const SIDE_X    = 5;   // small offset keeps text inside compass bounds at font-size 6
 
