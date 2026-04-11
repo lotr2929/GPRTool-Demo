@@ -438,7 +438,7 @@ function injectDNGroup(svg) {
   // Label — outside circle at arrow tip; position/anchor set in applyDesignNorth()
   const label = document.createElementNS('http://www.w3.org/2000/svg', 'text');
   label.id = 'np-dn-label';
-  label.setAttribute('font-size', '8');
+  label.setAttribute('font-size', '6');
   label.setAttribute('font-family', 'Outfit, sans-serif');
   label.setAttribute('fill', '#4a8a4a');
 
@@ -498,7 +498,7 @@ export function updateNorthRotation() {
     // Shift label sideways if TN arrow is near compass top (where D label sits)
     const LABEL_Y   = 16;  // baseline at dot (cy=18, top y=15) — label sits on DN arrow tip
     const CLASH_DEG = 65;
-    const SIDE_X    = 10;
+    const SIDE_X    = 5;   // small offset keeps text inside compass bounds at font-size 6
 
     // Clash is between TN needle and DN label (at top) — use needle local angle
     const needleLocalForClash = globalNorthAngle - designNorthAngle;
