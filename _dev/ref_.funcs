@@ -1,0 +1,100 @@
+# GPRTool -- function index
+# REFERENCE COPY -- stored in _dev/ for comparison against Coder-generated output
+# Generated from: app/index.html, app/js/north-point-2d.js, app/js/north-point-3d.js
+
+## app/index.html  (125 KB -- all app logic inline; target: extract to app/js/)
+
+[UI / Clock / Alarm]
+  updateHeaderTime, setAlarm, triggerAlarm, stopAlarm, clearAlarm, showFeedback
+
+[Geo Utilities]
+  latlonToMetres, extractCoordinates, computeBBox, computePolygonArea, computePolygonPerimeter
+
+[Map Tile Overlay]
+  loadMapTiles, loadOneTile, clearMapTiles, lonToTileX, latToTileY,
+  tileXToLon, tileYToLat, mercatorY
+
+[Scene / Renderer]
+  syncViewportBackground, updateSceneHelpers, update2DCamera, switchMode,
+  fit2DCamera, fit3DCamera, resizeToContainer, toggleAxes
+
+[Surface Detection]
+  classifyNormal, computeMeshArea, computeDominantNormal, vKey,
+  extractAllTriangles, buildCoplanarPatches, patchArea, detectSurfaces
+
+[Model Loading]
+  detectAndApplyUnitScale, onModelLoaded, loadOBJ, loadGLTF, loadIFC
+
+[Edge Overlay]
+  addEdgeOverlay
+
+[Surface UI]
+  populateSurfacePanel, typeMat, applyMatToSurface,
+  hoverSurface, unhoverSurface, selectSurface, deselectSurface
+
+[Camera / Surface Canvas]
+  fitSurfaceCamera, drawSurfaceCanvasOutline, clearSurfaceCanvasOutline
+
+[Raycaster]
+  getPointerNDC, allSurfaceMeshes
+
+[Site Boundary]
+  drawSiteBoundary
+
+[GPR Engine]
+  recalcGPR, updateClearBtn, addPlantInstance, removePlantInstance,
+  updateInstanceCanopyArea, updateSurfaceListTag, renderSurfacePlantSchedule,
+  renderPlantList, refreshModalStatus, openPlantModal, closePlantModal
+
+[Placement Engine]
+  placementTypeForCategory, substrateCapRadius, substrateCapLabel, radiusLimits,
+  startPlacement, cancelPlacement, clearPreview, showCirclePreview, showPolygonPreview,
+  canvasNDC, raycastSurface, worldToSurfaceUV, surfaceUVToWorld, getSurfaceCentre,
+  commitCirclePlacement, commitPolygonPlacement, polygonArea,
+  buildCircleProxy, buildPolygonProxy, removeProxyForInstance, clearAllProxies,
+  proxyMatForCategory
+
+
+## app/js/north-point-2d.js  (23 KB)
+exports:
+  initNorthPoint2D(getStateCallback)  -- init compass widget after DOM ready; call once after body.html injected
+  updateNorthRotation()  -- update compass housing + needle each animation frame
+  toggleNorthPoint()  -- show / hide compass widget
+  resetNorthPos()  -- move compass to default bottom-right corner
+  setNorthPoint2DVisible(visible)  -- show or hide without toggling state
+  getDesignNorthAngle()  -- returns designNorthAngle (decimal degrees, +ve = East)
+  resetDesignNorth()  -- reset designNorthAngle to 0
+  setNorthPointMode('2d'|'3d')  -- hide DOM widget in 3D (gizmo takes over)
+
+internals:
+  parseNorthAngle(str)  -- parse angle input (e.g. "7W", "7°22'E") to decimal degrees
+  formatNorthAngle(deg) / formatNorthAngleCompact(deg)  -- format degrees for display
+  applyDesignNorth(deg)  -- set designNorthAngle, update DN arrow + label + localStorage
+  applyGlobalNorth(deg)  -- set globalNorthAngle (TN offset from world -Z)
+  showDNInput(autoFocus) / hideDNInput()  -- Design North text input popup
+  showTNInput(autoFocus) / hideTNInput()  -- True North offset text input popup
+  onDNKeyCapture(e) / onTNKeyCapture(e)  -- capture-phase keyboard handlers for input popups
+  injectDNGroup(svg)  -- inject green Design North arrow group into SVG at init
+  heightFromWidth(w) / applySize(w) / applyPos(right, bottom)  -- layout helpers
+  saveState() / restoreState()  -- persist to localStorage key 'gprtool-np2d-state'
+  angleFromNPCenter(clientX, clientY)  -- angle in degrees from compass centre to pointer
+  enterRotateMode() / exitRotateMode()  -- activate drag-to-rotate TN mode
+  onResizeDown(e) / handleResize(e) / stopResize()  -- resize-handle drag
+  onDragDown(e) / handleDrag(e) / stopDrag()  -- compass drag + TN rotation during rotate mode
+  onPointerMove(e) / onPointerUp()  -- combined document pointer handlers
+
+
+## app/js/north-point-3d.js  (11 KB)
+exports:
+  initNorthPoint3D(getStateCallback)  -- init 3D HUD compass gizmo after DOM + NP2D ready
+  updateGizmoOverlay()  -- update overlay div position/size/visibility (call on mode switch)
+  renderCompassGizmo()  -- render compass into 3D viewport scissor region (call each frame)
+  toggleGizmo3D()  -- show / hide 3D gizmo
+  isGizmo3DVisible()  -- returns current gizmo3DVisible boolean
+
+internals:
+  _buildCompassMesh()  -- create Three.js PlaneGeometry with CanvasTexture from NP2D SVG
+  _buildOverlay()  -- create draggable/resizable overlay div with 4 corner resize handles
+  updateGizmoTexture(dnDeg)  -- serialize #np-rotator SVG to canvas (called when DN changes)
+  _setSelected(bool)  -- toggle selection highlight + show/hide resize handles
+  _onPointerDown(e) / _onPointerMove(e) / _onPointerUp(e)  -- overlay drag and resize handlers

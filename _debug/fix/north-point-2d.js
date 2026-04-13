@@ -1,3 +1,4 @@
+// north-point-2d.js — implements a 2D DOM compass widget for navigation and orientation.
 /**
  * north-point-2d.js — 2D DOM compass widget
  *
@@ -536,7 +537,6 @@ export function updateNorthRotation() {
 }
 
 export function getDesignNorthAngle() { return designNorthAngle; }
-export function getGlobalNorthAngle() { return globalNorthAngle; }
 export function resetDesignNorth() { applyDesignNorth(0); }
 
 export function setNorthPointMode(mode) {

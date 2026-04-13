@@ -1,6 +1,6 @@
 # Project Map: GPRTool
-Generated: Tue, 7 Apr 2026, 11:55 am  (0.1s)
-Files:     94
+Generated: Mon, 13 Apr 2026, 10:34 am  (0.2s)
+Files:     98
 
 [dir]  _archive/
   [dir]  backend/
@@ -21,13 +21,16 @@ Files:     94
   [file] start.bat.old (1.2 KB)
   [file] test_site_scratch.geojson (857 B)
 [dir]  _context/
-  [file] chat.md (103.7 KB)  -- Session Log -- GPRTool
+  [file] brief_benchmark_compass3d.md (8.9 KB)  -- Brief Benchmark — NPoint Compass 3D Back-Face Bug
 [dir]  _dev/
   [file] _design.md (47.5 KB)  -- GPRTool — Design & Development Guide
   [file] _dev_guide.md (10.5 KB)  -- GPRTool — Developer Guide
   [file] _journal.md (13.5 KB)  -- GPRTool Development Journal
   [file] _map.md (9.0 KB)  -- GPRTool — Repository Map
   [file] _session.md (3.7 KB)  -- GPRTool — Session Status
+  [file] ref_.brief (2.2 KB)
+  [file] ref_.funcs (4.7 KB)
+  [file] ref_.slim (1.5 KB)
   [file] repomix-output.xml (328.6 KB)
   [file] Three.js Grid Orientation.md (2.1 KB)
 [dir]  app/
@@ -38,7 +41,7 @@ Files:     94
       [file] gpr-logo4.png (419.4 KB)
     [file] gpr-logo.png (829.4 KB)
   [dir]  js/
-    [file] north-point-2d.js (22.9 KB)
+    [file] north-point-2d.js (26.2 KB)
     [file] north-point-3d.js (10.7 KB)
     [file] OrbitControls.js (4.8 KB)  -- Simplified, stable OrbitControls
     [file] three.module.js (1.2 MB)
@@ -109,6 +112,7 @@ Files:     94
   [file] test-tower-clean.obj (747 B)
   [file] test-tower.obj (2.8 KB)
 [file] CLAUDE.md (1.9 KB)  -- CLAUDE.md -- GPRTool
+[file] copilot_mcp.bat (485 B)
 [file] deploy.bat (3.6 KB)
 [file] deploy.env (170 B)
 [file] poll_vercel.ps1 (3.2 KB)  -- poll_vercel.ps1 - called by deploy.bat after git push

@@ -1,0 +1,38 @@
+Stack: HTML/CSS/JS, Three.js r160, Vercel/GitHub. No npm, no frameworks.
+Two coordinate systems: Global (Three.js, -Z=True North) and Design (user-set via designNorthAngle).
+Two viewports: 2D plan and 3D perspective. North point compass shared between both.
+LAI database (LAI_categorised.csv) is core IP -- never expose or send to external APIs.
+Use Microsoft Edge for development -- Chrome has rendering issues.
+App root for Vercel deployment: app/ only. lai/, projects/, _dev/ are never deployed.
+
+---
+# GPRTool -- file index
+app/body.html  --  Main Content Area
+app/header.html  --  Undo / Redo arrows — far left, always visible
+app/index.html
+app/plants_free.json
+app/styles.css
+app/js/north-point-2d.js
+app/js/north-point-3d.js
+app/js/OrbitControls.js  --  Simplified, stable OrbitControls
+app/js/three.module.js
+app/textures/plywood.webp
+_dev/_design.md  --  GPRTool — Design & Development Guide
+_dev/_dev_guide.md  --  GPRTool — Developer Guide
+_dev/_journal.md  --  GPRTool Development Journal
+_dev/_map.md  --  GPRTool — Repository Map
+_dev/_session.md  --  GPRTool — Session Status
+lai/LAI_categorised.csv
+lai/LAI_DATABASE_STRATEGY.md  --  GPRTool LAI Database Strategy
+lai/GreenPlotRatio_LAI Values.csv
+lai/LAI_combined_clean.csv
+lai/LAI_tropical_subset.csv
+lai/lai_categorise.py
+lai/lai_explorer.py
+lai/merge_singapore_lai.py
+projects/30_beaufort_street_parcel.geojson
+projects/README.md  --  GPRTool Test Data
+CLAUDE.md  --  CLAUDE.md -- GPRTool
+deploy.bat
+poll_vercel.ps1  --  poll_vercel.ps1 - called by deploy.bat after git push
+start.bat

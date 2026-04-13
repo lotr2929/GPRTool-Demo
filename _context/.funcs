@@ -1,0 +1,32 @@
+# GPRTool -- function index
+# Generated: 13 Apr 2026  10:34 am
+
+## app/js/north-point-2d.js  (26 KB)
+  parseNorthAngle(str), formatNorthAngle(deg), formatNorthAngleCompact(deg), heightFromWidth(w), applySize(w), applyPos(right, bottom)
+  saveState(), restoreState(), resetPosInternal(), applyDesignNorth(deg), applyGlobalNorth(deg), angleFromNPCenter(clientX, clientY)
+  enterRotateMode(), exitRotateMode(), showDNInput(autoFocus), hideDNInput(), onDNKeyCapture(e), onClickOutsideDNInput(e)
+  showTNInput(autoFocus), hideTNInput(), onTNKeyCapture(e), onClickOutsideTNInput(e), injectDNGroup(svg), toggleNorthPoint()
+  setNorthPoint2DVisible(visible), resetNorthPos(), updateNorthRotation(), getDesignNorthAngle(), resetDesignNorth(), setNorthPointMode(mode)
+  initNorthPoint2D(getStateCallback), onResizeDown(e), handleResize(e), stopResize(), onDragDown(e), handleDrag(e)
+  stopDrag(), onPointerMove(e), onPointerUp()
+
+## app/js/north-point-3d.js  (11 KB)
+  _buildCompassMesh(), updateGizmoTexture(dnDeg), _buildOverlay(), _setSelected(sel), _onPointerDown(e), _onPointerMove(e)
+  _onPointerUp(e), initNorthPoint3D(getStateCallback), updateGizmoOverlay(), isGizmo3DVisible(), toggleGizmo3D(), renderCompassGizmo()
+
+## app/index.html  (125 KB)
+  updateHeaderTime(), setAlarm(timeStr), triggerAlarm(), stopAlarm(), clearAlarm(), syncViewportBackground()
+  update2DCamera(), updateSceneHelpers(siteSpan), latlonToMetres(lon, lat, cLon, cLat), extractCoordinates(geojson), computeBBox(coords), computePolygonArea(coords)
+  computePolygonPerimeter(coords), lonToTileX(lon, z), latToTileY(lat, z), tileXToLon(tx, z), tileYToLat(ty, z), loadMapTiles(bbox)
+  mercatorY(lat), loadOneTile(tx, ty, z, bbox), clearMapTiles(), classifyNormal(normal), computeMeshArea(mesh), computeDominantNormal(mesh)
+  vKey(v), extractAllTriangles(modelGroup), buildCoplanarPatches(tris), patchArea(tris), detectSurfaces(modelGroup), populateSurfacePanel()
+  typeMat(s), applyMatToSurface(s, mat), hoverSurface(s), unhoverSurface(s), selectSurface(s), deselectSurface()
+  getPointerNDC(e), allSurfaceMeshes(), loadOBJ(file), loadGLTF(file), loadIFC(file), addEdgeOverlay(modelGroup)
+  detectAndApplyUnitScale(group), onModelLoaded(group, filename, format), drawSiteBoundary(coords), fit2DCamera(box), fit3DCamera(box), drawSurfaceCanvasOutline(surface)
+  clearSurfaceCanvasOutline(), fitSurfaceCamera(surface), switchMode(mode), resizeToContainer(), showFeedback(message, duration), recalcGPR()
+  updateClearBtn(), addPlantInstance(surface, species, canopyArea), removePlantInstance(surface, instanceId), updateInstanceCanopyArea(surface, instanceId, newArea), updateSurfaceListTag(surface), renderSurfacePlantSchedule(surface)
+  renderPlantList(), refreshModalStatus(), openPlantModal(), closePlantModal(), placementTypeForCategory(cat), substrateCapRadius(depth_mm)
+  substrateCapLabel(depth_mm), radiusLimits(species, surface), getSurfaceCentre(surface), raycastSurface(ndc, surface), worldToSurfaceUV(worldPt, surface), surfaceUVToWorld(u, v, surface)
+  canvasNDC(e), startPlacement(species), cancelPlacement(), clearPreview(), showCirclePreview(cx, cz, radius, surface), showPolygonPreview(pts, mouseUV, surface)
+  commitCirclePlacement(surface, species, centre, radius, area), commitPolygonPlacement(surface, species, polyPts), polygonArea(pts), proxyMatForCategory(cat), buildCircleProxy(inst, surface, species), buildPolygonProxy(inst, surface, species)
+  removeProxyForInstance(inst), clearAllProxies(), toggleAxes()

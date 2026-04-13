@@ -1,3 +1,4 @@
+// north-point-3d.js — provides a 3D HUD compass gizmo functionality for the application
 /**
  * north-point-3d.js — 3D HUD compass gizmo
  *
@@ -19,7 +20,7 @@
  */
 
 import * as THREE from 'three';
-import { getDesignNorthAngle, getGlobalNorthAngle } from './north-point-2d.js';
+import { getDesignNorthAngle } from './north-point-2d.js';
 
 // ── Module state ──────────────────────────────────────────────
 let getState = null;
@@ -31,7 +32,6 @@ let gizmoCompassMesh = null;
 let _gizmoCanvasTex  = null;
 let _gizmoCtx        = null;
 let _lastDrawnDnDeg  = undefined; // sentinel — forces draw on first frame
-let _lastDrawnGnDeg  = undefined;
 
 // Frame state — pixel size drives everything, frustum NEVER changes
 let gizmo3DSize    = 160;
@@ -76,27 +76,13 @@ function _buildCompassMesh() {
 
 // Serialise #np-rotator svg into canvas texture.
 // dnDeg: Design North decimal degrees (+ve = E/clockwise), or null.
-// gnDeg: Global (True) North decimal degrees.
-function updateGizmoTexture(dnDeg, gnDeg) {
+// Sets #np-dn-group transform to rotate(dnDeg, 32, 40) so the dot
+// points Design North — SVG clockwise = world-space clockwise.
+function updateGizmoTexture(dnDeg) {
   const svgEl = document.querySelector('#np-rotator svg');
   if (!svgEl) return;
 
   const clone   = svgEl.cloneNode(true);
-
-  // Rotate housing (ticks) to match Design North
-  const housingGroup = clone.querySelector('#np-housing-group');
-  if (housingGroup) {
-    housingGroup.setAttribute('transform', `rotate(${dnDeg}, 32, 40)`);
-  }
-
-  // Rotate TN needle to match True North
-  const tnNeedle = clone.querySelector('#np-tn-needle');
-  if (tnNeedle) {
-    tnNeedle.setAttribute('transform', `rotate(${gnDeg}, 32, 40)`);
-  }
-
-  // DN arrow dot stays at top relative to housing (0 degrees relative to housing)
-  // or we rotate it by dnDeg if it's in the SVG root.
   const dnGroup = clone.querySelector('#np-dn-group');
   if (dnGroup) {
     if (dnDeg !== null && dnDeg !== undefined) {
@@ -263,7 +249,7 @@ export function initNorthPoint3D(getStateCallback) {
   _buildCompassMesh();
   _buildOverlay();
   // Draw texture one frame after NP2D has injected #np-dn-group into the SVG
-  requestAnimationFrame(() => updateGizmoTexture(getDesignNorthAngle(), getGlobalNorthAngle()));
+  requestAnimationFrame(() => updateGizmoTexture(getDesignNorthAngle()));
 }
 
 export function updateGizmoOverlay() {
@@ -300,13 +286,11 @@ export function renderCompassGizmo() {
   const bwd = new THREE.Vector3(0, 0, 1).applyQuaternion(gizmoCamera.quaternion);
   gizmoCamera.position.copy(bwd).multiplyScalar(5);
 
-  // Redraw SVG texture only when DN or GN value changes
+  // Redraw SVG texture only when DN value changes
   const dnDeg = getDesignNorthAngle();
-  const gnDeg = getGlobalNorthAngle();
-  if (dnDeg !== _lastDrawnDnDeg || gnDeg !== _lastDrawnGnDeg) {
-    updateGizmoTexture(dnDeg, gnDeg);
+  if (dnDeg !== _lastDrawnDnDeg) {
+    updateGizmoTexture(dnDeg);
     _lastDrawnDnDeg = dnDeg;
-    _lastDrawnGnDeg = gnDeg;
   }
   // N label always points True North (world -Z) — mesh never rotates
   gizmoCompassMesh.rotation.y = 0;

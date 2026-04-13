@@ -1,21 +1,21 @@
-Stack: HTML/CSS/JS, Three.js, Vercel/GitHub. No npm, no frameworks.
-Two coordinate systems: Global (Three.js, -Z=True North) and Design (user-set via designNorthAngle).
-Two viewports: 2D plan and 3D perspective. North point compass shared between both.
-LAI database (LAI_categorised.csv) is core IP -- never expose or send to external APIs.
-Use Microsoft Edge for development -- Chrome has rendering issues.
+Stack: HTML/CSS/JS, Three.js, Microsoft Edge for development and testing
+Target directory structure is defined in _map.md and is being built toward incrementally
+app/js/ will contain extracted modules with specific responsibilities such as scene, controls, and surfaces
+Each JS file in app/js/ must declare dependencies at the top and expose only what other modules need
+Subfolders are only allowed for features with 3+ files of their own, with tools/ being the exception
 
 ---
 # GPRTool -- file index
 _archive/backend/app.py
 _archive/backend/exporters.py
 _archive/backend/geometry.py
-_archive/backend/accdb_export.py
-_archive/backend/camera.js  --  camera.js — Stable Perspective Camera for Three.js
-_archive/backend/close.bat
-_archive/backend/lai_count.py
-_archive/backend/main.js  --  main.js — GPRTool (Boon Ong / Curtin University)
-_archive/backend/README.md  --  _archive — GPRTool-Demo
-_context/chat.md  --  Session Log -- GPRTool
+_archive/accdb_export.py
+_archive/camera.js  --  camera.js — Stable Perspective Camera for Three.js
+_archive/close.bat
+_archive/lai_count.py
+_archive/main.js  --  main.js — GPRTool (Boon Ong / Curtin University)
+_archive/README.md  --  _archive — GPRTool-Demo
+_context/brief_benchmark_compass3d.md  --  Brief Benchmark — NPoint Compass 3D Back-Face Bug
 _dev/_design.md  --  GPRTool — Design & Development Guide
 _dev/_dev_guide.md  --  GPRTool — Developer Guide
 _dev/_journal.md  --  GPRTool Development Journal
@@ -25,18 +25,19 @@ app/js/north-point-2d.js
 app/js/north-point-3d.js
 app/js/OrbitControls.js  --  Simplified, stable OrbitControls
 app/js/three.module.js
-app/textures/body.html  --  Main Content Area
-app/textures/header.html  --  Undo / Redo arrows — far left, always visible
-app/textures/index.html
-app/textures/plants_free.json
-app/textures/styles.css
+app/body.html  --  Main Content Area
+app/header.html  --  Undo / Redo arrows — far left, always visible
+app/index.html
+app/plants_free.json
+app/styles.css
 lai/ORNL DAAC-Global Database of LAI_Woody Plants (1932-2011)/guide/Online_Version_LAI_Woody_Plants.html
-lai/TRY Database/lai_categorise.py
-lai/TRY Database/LAI_DATABASE_STRATEGY.md  --  GPRTool LAI Database Strategy
-lai/TRY Database/lai_explorer.py
-lai/TRY Database/merge_singapore_lai.py
+lai/lai_categorise.py
+lai/LAI_DATABASE_STRATEGY.md  --  GPRTool LAI Database Strategy
+lai/lai_explorer.py
+lai/merge_singapore_lai.py
 projects/README.md  --  GPRTool Test Data
-projects/CLAUDE.md  --  CLAUDE.md -- GPRTool
-projects/deploy.bat
-projects/poll_vercel.ps1  --  poll_vercel.ps1 - called by deploy.bat after git push
-projects/start.bat
+CLAUDE.md  --  CLAUDE.md -- GPRTool
+copilot_mcp.bat
+deploy.bat
+poll_vercel.ps1  --  poll_vercel.ps1 - called by deploy.bat after git push
+start.bat

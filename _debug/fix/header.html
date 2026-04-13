@@ -1,0 +1,114 @@
+<!-- app/header.html: Defines the main application header, including undo/redo buttons and a menu bar. -->
+<header id="main-header">
+
+  <!-- Undo / Redo arrows — far left, always visible -->
+  <div class="header-history">
+    <button class="history-btn" id="undoBtn" title="Undo (Ctrl+Z)" disabled>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M3 7v6h6"/>
+        <path d="M3 13C5 7.5 10 4 16 4a9 9 0 0 1 5 16"/>
+      </svg>
+    </button>
+    <button class="history-btn" id="redoBtn" title="Redo (Ctrl+Shift+Z)" disabled>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M21 7v6h-6"/>
+        <path d="M21 13C19 7.5 14 4 8 4a9 9 0 0 0-5 16"/>
+      </svg>
+    </button>
+  </div>
+
+  <!-- Menu bar -->
+  <div class="header-left">
+    <nav class="menu-bar">
+
+      <div class="menu-item">
+        <button class="menu-button">File</button>
+        <div class="dropdown-menu">
+          <a href="#" data-action="new">New<span class="shortcut">Ctrl+N</span></a>
+          <a href="#" data-action="open">Open&#8230;<span class="shortcut">Ctrl+O</span></a>
+          <a href="#" data-action="save">Save<span class="shortcut">Ctrl+S</span></a>
+          <a href="#" data-action="save-as">Save As&#8230;<span class="shortcut">Ctrl+Shift+S</span></a>
+          <hr>
+          <a href="#" data-action="import-model">Import 3D Model&#8230;</a>
+          <a href="#" data-action="import-geojson-menu">Import Site Boundary&#8230;</a>
+          <a href="#" data-action="import-image">Import Site Image&#8230;</a>
+          <a href="#" data-action="import-landscape-dxf">Import Landscape DXF&#8230;</a>
+          <hr>
+          <a href="#" data-action="export-dxf">Export GPR Annotations&#8230;</a>
+          <a href="#" data-action="export-report">Export GPR Report&#8230;</a>
+          <hr>
+          <a href="#" data-action="preferences">Preferences&#8230;</a>
+        </div>
+      </div>
+
+      <div class="menu-item">
+        <button class="menu-button">Edit</button>
+        <div class="dropdown-menu">
+          <a href="#" data-action="undo">Undo<span class="shortcut">Ctrl+Z</span></a>
+          <a href="#" data-action="redo">Redo<span class="shortcut">Ctrl+Shift+Z</span></a>
+          <hr>
+          <a href="#" data-action="select">Select / Move<span class="shortcut">V</span></a>
+          <a href="#" data-action="select-all">Select All<span class="shortcut">Ctrl+A</span></a>
+          <a href="#" data-action="deselect">Deselect All<span class="shortcut">Esc</span></a>
+          <a href="#" data-action="delete">Delete<span class="shortcut">Del</span></a>
+          <hr>
+          <a href="#" data-action="construction-line">Construction Line</a>
+          <a href="#" data-action="construction-point">Construction Point</a>
+          <a href="#" data-action="offset-guide">Offset Guide</a>
+          <a href="#" data-action="dimension">Dimension</a>
+          <hr>
+          <a href="#" data-action="clear-guides">Clear Guides</a>
+        </div>
+      </div>
+
+      <div class="menu-item">
+        <button class="menu-button">Navigation</button>
+        <div class="dropdown-menu">
+          <a href="#" data-action="fit-site">Fit to Site<span class="shortcut">Ctrl+F</span></a>
+          <a href="#" data-action="zoom">Zoom</a>
+          <a href="#" data-action="pan">Pan</a>
+          <a href="#" data-action="orbit">Orbit</a>
+        </div>
+      </div>
+
+      <div class="menu-item">
+        <button class="menu-button">View</button>
+        <div class="dropdown-menu">
+          <a href="#" data-action="toggle-grid">Toggle Grid<span class="shortcut">Ctrl+G</span></a>
+          <a href="#" data-action="toggle-axes">Toggle Axes<span class="shortcut">Ctrl+T</span></a>
+          <a href="#" data-action="north-pointer">North Pointer</a>
+          <a href="#" data-action="north-reset">Reset North Point Position</a>
+          <hr>
+          <a href="#" data-action="view-isometric">Isometric<span class="shortcut">Ctrl+I</span></a>
+          <a href="#" data-action="view-top">Top</a>
+          <a href="#" data-action="view-front">Front</a>
+          <hr>
+          <a href="#" data-action="show-hidden">Show Hidden&#8230;</a>
+        </div>
+      </div>
+
+      <div class="menu-item">
+        <button class="menu-button">Help</button>
+        <div class="dropdown-menu">
+          <a href="#" data-action="about-gpr">About Green Plot Ratio</a>
+          <a href="#" data-action="about">About GPRTool</a>
+          <hr>
+          <a href="#" data-action="docs">Documentation</a>
+        </div>
+      </div>
+
+    </nav>
+  </div>
+
+  <!-- App title — centred -->
+  <div class="header-center">
+    <img src="images/gpr-logo.png" alt="GPR" class="logo">
+    <h1 class="app-title">GPRTool</h1>
+  </div>
+
+  <!-- Clock — right -->
+  <div class="header-right">
+    <span id="header-datetime"></span>
+  </div>
+
+</header>

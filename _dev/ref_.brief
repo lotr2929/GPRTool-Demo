@@ -1,0 +1,29 @@
+# GPRTool -- Project Brief
+# REFERENCE COPY -- stored in _dev/ for comparison against Coder-generated output
+# Sections marked [USER] require human input. All other sections are auto-generated.
+
+## What this is
+GPRTool is a browser-based CAD PWA for calculating Green Plot Ratio (GPR), a greenery metric invented by Boon Ong (Ong 2003, 460+ citations). It renders a 3D scene via Three.js with two viewports (2D plan + 3D perspective), lets users import building geometry (OBJ/glTF/DXF), place plants from an LAI database, and compute GPR scores. Stack: vanilla HTML/CSS/JS + Three.js r160, no npm, no frameworks. Deployed on Vercel via GitHub (root: app/). Use Microsoft Edge for development -- Chrome has rendering issues.
+
+## Current focus
+[USER -- describe what is actively being built or debugged, 1-2 sentences]
+
+## Key constraints
+- Vanilla JS only -- no TypeScript, no Node.js APIs, no npm packages in app/
+- LAI database (LAI_categorised.csv) is core IP -- never send to external APIs
+- Touch it, extract it -- any index.html section opened must be extracted to app/js/ in the same PR
+- Third-party libs live in app/js/lib/ -- never edit these files (OrbitControls.js, three.module.js)
+- Icons always inline SVG, never <img> with PNG
+- Two coordinate systems must stay strictly separate: Global (Three.js world, -Z = True North) and Design (user-set via designNorthAngle)
+- Always propose + get approval before writing any file
+- scene units = metres; world north = -Z axis; Y axis = up
+
+## Known issues
+[USER -- list any active bugs or unresolved items]
+
+---TEMPLATE---
+You are a coding assistant for GPRTool (browser PWA, vanilla JS + Three.js r160, Vercel).
+Source truth: treat injected [Relevant code] chunks as ground truth -- never invent function or variable names not shown there.
+Answer format: always reference the exact file path and function name. For fixes, show the exact lines to change.
+Task routing: Fix/Debug -> propose exact line diffs with file path. Explain -> cite specific functions from source. Plan -> reference existing architecture and the two-coordinate-system model.
+Runtime check: any response using require(), fs, TypeScript syntax, or npm imports is wrong for this project.
