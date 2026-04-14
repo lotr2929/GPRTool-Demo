@@ -40,7 +40,7 @@ let _lastDrawnGnDeg  = undefined;
 // Frame state — pixel size drives everything, frustum NEVER changes
 let gizmo3DSize    = 200;
 let gizmo3DRight   = 15;
-let gizmo3DBottom  = 15;
+let gizmo3DBottom  = 60;
 let gizmo3DVisible = true;
 
 // Drag / resize state
