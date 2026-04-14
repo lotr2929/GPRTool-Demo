@@ -260,6 +260,28 @@ function _onPointerUp(e) {
   _saveGizmo3DState();
 }
 
+// ── Persistence ───────────────────────────────────────────────
+
+const _GIZMO3D_KEY = 'gprtool-gizmo3d';
+
+function _saveGizmo3DState() {
+  try {
+    localStorage.setItem(_GIZMO3D_KEY, JSON.stringify({
+      size: gizmo3DSize, right: gizmo3DRight, bottom: gizmo3DBottom, visible: gizmo3DVisible
+    }));
+  } catch(e) {}
+}
+
+function _loadGizmo3DState() {
+  try {
+    const s = JSON.parse(localStorage.getItem(_GIZMO3D_KEY) || '{}');
+    if (s.size)                gizmo3DSize    = s.size;
+    if (s.right  !== undefined) gizmo3DRight  = s.right;
+    if (s.bottom !== undefined) gizmo3DBottom = s.bottom;
+    if (s.visible !== undefined) gizmo3DVisible = s.visible;
+  } catch(e) {}
+}
+
 // ── Public API ────────────────────────────────────────────────
 
 export function initNorthPoint3D(getStateCallback) {
