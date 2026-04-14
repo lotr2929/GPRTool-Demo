@@ -30,6 +30,7 @@ let _camera3D   = null;  // set at init from getState
 const _raycaster = new THREE.Raycaster();
 const _groundNormal = new THREE.Vector3(0, 1, 0);
 const _groundPlane  = new THREE.Plane(_groundNormal, 0); // Y=0 plane
+const _compassScene  = new THREE.Scene();                   // isolated scene for scissor rendering
 
 let gizmoCompassMesh = null;
 let _gizmoCanvasTex  = null;
@@ -71,12 +72,13 @@ function _buildCompassMesh() {
       map: _gizmoCanvasTex,
       transparent: true,
       depthWrite: false,
+      depthTest:  false,
       side: THREE.DoubleSide,
     })
   );
   mesh.rotation.x = -Math.PI / 2;
   gizmoCompassMesh = mesh;
-  if (_mainScene) _mainScene.add(mesh);
+  _compassScene.add(mesh); // dedicated scene -- rendered with scissor, not added to main scene
 }
 
 // Serialise #np-rotator svg into canvas texture.
@@ -325,45 +327,42 @@ export function renderCompassGizmo() {
   const { renderer, camera3D, container } = getState();
   if (!gizmoCompassMesh) return;
 
-  // Add mesh to main scene on first call (scene not available at init time)
-  if (!gizmoCompassMesh.parent) {
-    // Walk up from renderer to find scene via the animate loop's scene variable
-    // We inject it here: main.js calls renderCompassGizmo() after renderer.render(scene,camera)
-    // so we can't get scene directly. We use a workaround: expose it on the renderer.
-    if (!renderer._compassMainScene) return; // not yet set
-    renderer._compassMainScene.add(gizmoCompassMesh);
-  }
-
   const cw = container.clientWidth;
   const ch = container.clientHeight;
 
-  // Dynamic NDC from overlay position (keeps mesh synced with draggable overlay)
+  // Dynamic NDC from overlay centre position
   const cx   = cw - gizmo3DRight  - gizmo3DSize / 2;
   const cy   = ch - gizmo3DBottom - gizmo3DSize / 2;
   const ndcX = (cx / cw) * 2 - 1;
   const ndcY = 1 - (cy / ch) * 2;
 
-  // Cast ray from that screen position through camera3D into world
+  // Cast ray from overlay centre through camera to ground plane
   _raycaster.setFromCamera(new THREE.Vector2(ndcX, ndcY), camera3D);
   const target = new THREE.Vector3();
   const hit = _raycaster.ray.intersectPlane(_groundPlane, target);
-  if (!hit) return; // ray parallel to ground (shouldn't happen for normal angles)
+  if (!hit) return;
 
-  // Move compass to that world position (on the ground)
+  // Position and scale compass mesh
   gizmoCompassMesh.position.copy(target);
-  gizmoCompassMesh.rotation.y = 0; // N label always points True North (-Z)
+  gizmoCompassMesh.rotation.y = 0;
 
-  // Scale: keep apparent screen size constant regardless of zoom/distance.
-  // At distance D from camera with fov F, a world unit = screenHeight / (2 * D * tan(F/2)) pixels.
-  // We want the compass to always be ~compassScreenSize pixels.
-  const compassScreenSize = gizmo3DSize; // match overlay size exactly
   const dist = camera3D.position.distanceTo(target);
   const fovRad = camera3D.fov * Math.PI / 180;
   const pixelsPerUnit = ch / (2 * dist * Math.tan(fovRad / 2));
-  const worldScale = compassScreenSize / (pixelsPerUnit * 3.0); // PlaneGeometry is 3x3 units
+  const worldScale = gizmo3DSize / (pixelsPerUnit * 3.0);
   gizmoCompassMesh.scale.set(worldScale, worldScale, worldScale);
 
-  // Redraw SVG texture only when DN or GN value changes
+  // Scissor-clip rendering to exactly the overlay rect so perspective
+  // overhang never bleeds outside the frame.
+  // WebGL scissor Y is measured from the BOTTOM of the canvas.
+  const sx = cw - gizmo3DRight - gizmo3DSize;
+  const sy = gizmo3DBottom;
+  renderer.setScissorTest(true);
+  renderer.setScissor(sx, sy, gizmo3DSize, gizmo3DSize);
+  renderer.render(_compassScene, camera3D);
+  renderer.setScissorTest(false);
+
+  // Redraw texture only when north angles change
   const dnDeg = getDesignNorthAngle();
   const gnDeg = getGlobalNorthAngle();
   if (dnDeg !== _lastDrawnDnDeg || gnDeg !== _lastDrawnGnDeg) {
