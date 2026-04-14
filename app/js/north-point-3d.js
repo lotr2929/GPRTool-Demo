@@ -70,7 +70,7 @@ function _buildCompassMesh() {
   );
   mesh.rotation.x = -Math.PI / 2;
   gizmoCompassMesh = mesh;
-  gizmoCompassMesh.scale.x = -1; // un-mirror: canvas texture renders flipped horizontally
+  gizmoCompassMesh.scale.x = 1;  // front-face top-down view -- no mirror needed
   gizmoScene.add(mesh);
 }
 
@@ -295,11 +295,11 @@ export function renderCompassGizmo() {
   const x    = Math.round(cw - gizmo3DRight - size);
   const y    = Math.round(gizmo3DBottom);
 
-  // Fix: extract yaw only from camera3D, look straight down, no pitch copy
+  // Fix: always look straight down, track camera yaw via up vector
   const _euler = new THREE.Euler().setFromQuaternion(camera3D.quaternion, 'YXZ');
-  const _downYaw = new THREE.Euler(Math.PI / 2, _euler.y, 0, 'YXZ');
-  gizmoCamera.quaternion.setFromEuler(_downYaw);
   gizmoCamera.position.set(0, 5, 0);
+  gizmoCamera.up.set(Math.sin(_euler.y), 0, -Math.cos(_euler.y));
+  gizmoCamera.lookAt(0, 0, 0);
 
   // Redraw SVG texture only when DN or GN value changes
   const dnDeg = getDesignNorthAngle();
