@@ -38,9 +38,9 @@ let _lastDrawnDnDeg  = undefined; // sentinel — forces draw on first frame
 let _lastDrawnGnDeg  = undefined;
 
 // Frame state — pixel size drives everything, frustum NEVER changes
-let gizmo3DSize    = 160;
-let gizmo3DRight   = 16;
-let gizmo3DBottom  = 16;
+let gizmo3DSize    = 120;
+let gizmo3DRight   = 20;
+let gizmo3DBottom  = 20;
 let gizmo3DVisible = true;
 
 // Drag / resize state
@@ -72,9 +72,8 @@ function _buildCompassMesh() {
       side: THREE.DoubleSide,
     })
   );
-  mesh.rotation.x = -Math.PI / 2;
+  mesh.rotation.x = Math.PI / 2;
   gizmoCompassMesh = mesh;
-  gizmoCompassMesh.scale.x = -1; // un-mirror: canvas texture renders flipped horizontally
   if (_mainScene) _mainScene.add(mesh);
 }
 
@@ -258,6 +257,7 @@ function _onPointerUp(e) {
   if (!wasDrag && !wasResize && !e.target.dataset?.handle) {
     _setSelected(!_gzSelected);
   }
+  _saveGizmo3DState();
 }
 
 // ── Public API ────────────────────────────────────────────────
@@ -270,6 +270,7 @@ export function initNorthPoint3D(getStateCallback) {
     return null;
   })();
   _camera3D  = _c;
+  _loadGizmo3DState();
   _buildCompassMesh();
   _buildOverlay();
   // Draw texture one frame after NP2D has injected #np-dn-group into the SVG
@@ -312,9 +313,11 @@ export function renderCompassGizmo() {
   const cw = container.clientWidth;
   const ch = container.clientHeight;
 
-  // Fixed screen position: bottom-right corner (NDC coords: x=0.82, y=-0.82)
-  const ndcX =  0.82;
-  const ndcY = -0.82;
+  // Dynamic NDC from overlay position (keeps mesh synced with draggable overlay)
+  const cx   = cw - gizmo3DRight  - gizmo3DSize / 2;
+  const cy   = ch - gizmo3DBottom - gizmo3DSize / 2;
+  const ndcX = (cx / cw) * 2 - 1;
+  const ndcY = 1 - (cy / ch) * 2;
 
   // Cast ray from that screen position through camera3D into world
   _raycaster.setFromCamera(new THREE.Vector2(ndcX, ndcY), camera3D);
@@ -329,12 +332,12 @@ export function renderCompassGizmo() {
   // Scale: keep apparent screen size constant regardless of zoom/distance.
   // At distance D from camera with fov F, a world unit = screenHeight / (2 * D * tan(F/2)) pixels.
   // We want the compass to always be ~compassScreenSize pixels.
-  const compassScreenSize = Math.min(cw, ch) * 0.10; // 10% of viewport short side
+  const compassScreenSize = gizmo3DSize; // match overlay size exactly
   const dist = camera3D.position.distanceTo(target);
   const fovRad = camera3D.fov * Math.PI / 180;
   const pixelsPerUnit = ch / (2 * dist * Math.tan(fovRad / 2));
   const worldScale = compassScreenSize / pixelsPerUnit;
-  gizmoCompassMesh.scale.set(-worldScale, worldScale, worldScale); // scale.x neg = un-mirror canvas
+  gizmoCompassMesh.scale.set(worldScale, worldScale, worldScale);
 
   // Redraw SVG texture only when DN or GN value changes
   const dnDeg = getDesignNorthAngle();
