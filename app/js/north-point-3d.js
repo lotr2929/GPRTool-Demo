@@ -262,6 +262,9 @@ export function initNorthPoint3D(getStateCallback) {
   getState = getStateCallback;
   _buildCompassMesh();
   _buildOverlay();
+  // Position gizmo camera above the compass looking straight down (set once at init)
+  gizmoCamera.position.set(0, 5, 0);
+  gizmoCamera.lookAt(0, 0, 0);
   // Draw texture one frame after NP2D has injected #np-dn-group into the SVG
   requestAnimationFrame(() => updateGizmoTexture(getDesignNorthAngle(), getGlobalNorthAngle()));
 }
@@ -295,11 +298,10 @@ export function renderCompassGizmo() {
   const x    = Math.round(cw - gizmo3DRight - size);
   const y    = Math.round(gizmo3DBottom);
 
-  // Fix: look straight down with yaw-only tracking (-PI/2 pitches to -Y, not +Y)
+  // Camera stays above (position set at init). Rotate compass by updating "up" for yaw only.
   const _euler = new THREE.Euler().setFromQuaternion(camera3D.quaternion, 'YXZ');
-  const _downYaw = new THREE.Euler(-Math.PI / 2, _euler.y, 0, 'YXZ');
-  gizmoCamera.quaternion.setFromEuler(_downYaw);
-  gizmoCamera.position.set(0, 5, 0);
+  gizmoCamera.up.set(-Math.sin(_euler.y), 0, -Math.cos(_euler.y));
+  gizmoCamera.lookAt(0, 0, 0);
 
   // Redraw SVG texture only when DN or GN value changes
   const dnDeg = getDesignNorthAngle();
