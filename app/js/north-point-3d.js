@@ -376,39 +376,37 @@ export function renderCompassGizmo() {
   const worldScale = gizmo3DSize / (pixelsPerUnit * 3.0);
   gizmoCompassMesh.scale.set(worldScale, worldScale, worldScale);
 
-  // Project the near edge of the compass plane (closest to camera in XZ)
-  // to find how far it overflows below the overlay frame due to perspective.
-  // Extend the scissor rect downward to cover it exactly.
+  // Project all 4 corners of the compass plane to get the exact screen bounding box.
+  // This handles overflow in all directions regardless of camera orientation.
   const camToTargetXZ = new THREE.Vector2(
     target.x - camera3D.position.x,
     target.z - camera3D.position.z
   ).normalize();
-  const nearEdgeWorld = new THREE.Vector3(
-    target.x - camToTargetXZ.x * worldScale * 1.5,
-    0,
-    target.z - camToTargetXZ.y * worldScale * 1.5
+  const perpXZ = new THREE.Vector2(-camToTargetXZ.y, camToTargetXZ.x);
+  const hs     = worldScale * 1.5;
+  const corners = [[-1,-1],[-1,1],[1,-1],[1,1]].map(([s,p]) =>
+    new THREE.Vector3(
+      target.x + s * camToTargetXZ.x * hs + p * perpXZ.x * hs,
+      0,
+      target.z + s * camToTargetXZ.y * hs + p * perpXZ.y * hs
+    )
   );
-  const nearNDC     = nearEdgeWorld.clone().project(camera3D);
-  const nearScreenY = (1 - nearNDC.y) / 2 * ch;   // CSS pixels from top
-  const overlayBotY = ch - gizmo3DBottom;           // CSS pixels from top
-  const extraBelow  = Math.max(0, Math.ceil(nearScreenY - overlayBotY) + 4);
-
-  // Far edge (away from camera) may project above the overlay top.
-  const farEdgeWorld = new THREE.Vector3(
-    target.x + camToTargetXZ.x * worldScale * 1.5,
-    0,
-    target.z + camToTargetXZ.y * worldScale * 1.5
-  );
-  const farNDC      = farEdgeWorld.clone().project(camera3D);
-  const farScreenY  = (1 - farNDC.y) / 2 * ch;    // CSS pixels from top
-  const overlayTopY = ch - gizmo3DBottom - gizmo3DSize; // CSS pixels from top
-  const extraAbove  = Math.max(0, Math.ceil(overlayTopY - farScreenY) + 4);
-
-  // Scissor: overlay frame + overflow on both edges. WebGL Y from canvas bottom.
-  const sx = cw - gizmo3DRight - gizmo3DSize;
-  const sy = Math.max(0, gizmo3DBottom - extraBelow);
+  let minSX = Infinity, maxSX = -Infinity, minSY = Infinity, maxSY = -Infinity;
+  corners.forEach(c => {
+    const n  = c.clone().project(camera3D);
+    const px = (n.x + 1) / 2 * cw;    // CSS X
+    const py = (1 - n.y) / 2 * ch;    // CSS Y (0 = top)
+    if (px < minSX) minSX = px;  if (px > maxSX) maxSX = px;
+    if (py < minSY) minSY = py;  if (py > maxSY) maxSY = py;
+  });
+  const PAD = 4;
+  // Convert bounding box to WebGL scissor coords (Y from canvas bottom)
+  const scX = Math.max(0, Math.floor(minSX) - PAD);
+  const scY = Math.max(0, Math.floor(ch - maxSY) - PAD);
+  const scW = Math.ceil(maxSX - minSX) + PAD * 2;
+  const scH = Math.ceil(maxSY - minSY) + PAD * 2;
   renderer.setScissorTest(true);
-  renderer.setScissor(sx, sy, gizmo3DSize, gizmo3DSize + extraBelow + extraAbove);
+  renderer.setScissor(scX, scY, scW, scH);
 
   // Disable auto-clear so the main scene shows through transparent areas
   const prevAutoClear = renderer.autoClear;
