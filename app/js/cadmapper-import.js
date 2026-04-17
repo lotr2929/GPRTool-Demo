@@ -106,7 +106,9 @@ const MODAL_HTML = `
           <span>On the download confirmation page, note your
             <strong style="color:var(--text-primary);">Spatial Reference System</strong>:
             copy the <strong>UTM Zone</strong>, <strong>Easting</strong>, and
-            <strong>Northing</strong> values — GPRTool needs these to geolocate your model.</span>
+            <strong>Northing</strong> values in that order — GPRTool needs these to geolocate your model.
+            <span style="color:var(--text-muted);">Zip files stay on the CADMapper site for
+            1&nbsp;month, so you can return to the download page to retrieve these values later.</span></span>
         </div>
         <div style="display:flex; gap:11px; align-items:flex-start;">
           <span style="min-width:20px; height:20px; border-radius:50%; flex-shrink:0; margin-top:1px;
@@ -115,6 +117,17 @@ const MODAL_HTML = `
                        font-size:10px; font-weight:700;">4</span>
           <span>Extract the downloaded <strong>.zip</strong> to get your <strong>.dxf</strong> file.</span>
         </div>
+      </div>
+      <div style="padding:8px 18px 14px; border-top:1px solid var(--chrome-border); margin-top:2px;
+                  background:var(--accent-subtle,#eef4eb); font-size:10px; line-height:1.6;
+                  color:var(--text-secondary);">
+        <strong style="color:var(--text-primary); font-size:10px;">Road widths (Austroads)</strong><br>
+        Highways &amp; freeways: 3.5 m/lane (dual carriageway, ~20–30 m total) &nbsp;&middot;&nbsp;
+        Major roads: 3.5 m/lane (~14–20 m) &nbsp;&middot;&nbsp;
+        Minor roads: 3.0–3.5 m/lane (~10–14 m) &nbsp;&middot;&nbsp;
+        Paths: footpath 1.5–2.0 m, shared 2.5–3.5 m.
+        Road layers in the DXF show the road <em>surface</em> mesh only — actual road reserve widths
+        include shoulders and verges beyond the carriageway.
       </div>
       <div style="padding:10px 16px 14px; display:flex; justify-content:flex-end;
                   border-top:1px solid var(--chrome-border);">
@@ -156,6 +169,13 @@ const MODAL_HTML = `
           From your CADMapper download page &mdash; required to geolocate your model
         </div>
         <div style="display:flex; gap:8px;">
+          <div style="width:80px;">
+            <div style="font-size:10px; color:var(--text-secondary); margin-bottom:3px;">UTM Zone</div>
+            <input id="cadmapper-zone" type="number" placeholder="e.g. 50"
+              style="width:100%; box-sizing:border-box; background:var(--chrome-input);
+                     border:1px solid var(--chrome-border); border-radius:4px;
+                     color:var(--text-primary); font-size:12px; padding:5px 8px; outline:none;">
+          </div>
           <div style="flex:1;">
             <div style="font-size:10px; color:var(--text-secondary); margin-bottom:3px;">Easting (m)</div>
             <input id="cadmapper-easting" type="number" placeholder="e.g. 388500"
@@ -165,14 +185,7 @@ const MODAL_HTML = `
           </div>
           <div style="flex:1;">
             <div style="font-size:10px; color:var(--text-secondary); margin-bottom:3px;">Northing (m)</div>
-            <input id="cadmapper-northing" type="number" placeholder="e.g. 6461800"
-              style="width:100%; box-sizing:border-box; background:var(--chrome-input);
-                     border:1px solid var(--chrome-border); border-radius:4px;
-                     color:var(--text-primary); font-size:12px; padding:5px 8px; outline:none;">
-          </div>
-          <div style="width:80px;">
-            <div style="font-size:10px; color:var(--text-secondary); margin-bottom:3px;">UTM Zone</div>
-            <input id="cadmapper-zone" type="text" placeholder="e.g. 50S"
+            <input id="cadmapper-northing" type="number" placeholder="e.g. -3535933"
               style="width:100%; box-sizing:border-box; background:var(--chrome-input);
                      border:1px solid var(--chrome-border); border-radius:4px;
                      color:var(--text-primary); font-size:12px; padding:5px 8px; outline:none;">
@@ -280,12 +293,12 @@ async function runImport() {
 
   const easting  = parseFloat(document.getElementById('cadmapper-easting').value);
   const northing = parseFloat(document.getElementById('cadmapper-northing').value);
-  const zoneStr  = document.getElementById('cadmapper-zone').value.trim().toUpperCase();
-  if (!isNaN(easting) && !isNaN(northing) && zoneStr) {
+  const zoneNum  = parseInt(document.getElementById('cadmapper-zone').value.trim(), 10);
+  if (!isNaN(easting) && !isNaN(northing) && zoneNum > 0) {
     window.siteUTMOrigin = {
       easting, northing,
-      zone:       parseInt(zoneStr),
-      hemisphere: zoneStr.endsWith('N') ? 'N' : 'S',
+      zone:       zoneNum,
+      hemisphere: northing < 0 ? 'S' : 'N',   // derive from sign of northing
     };
   } else {
     window.siteUTMOrigin = null;

@@ -540,11 +540,62 @@
     });
 
     /* ============================================================
-       VIEWPORT RIGHT-CLICK — GRID SPACING POPUP
+       VIEWPORT RIGHT-CLICK CONTEXT MENU
     ============================================================ */
+    const _vpCtx = document.createElement('div');
+    _vpCtx.id = 'vp-ctx-menu';
+    _vpCtx.style.cssText = `
+      display:none; position:fixed; z-index:900;
+      background:var(--chrome-panel); border:1px solid var(--chrome-border);
+      border-radius:4px; box-shadow:0 4px 16px rgba(0,0,0,0.18);
+      padding:3px 0; min-width:170px;
+      font-family:var(--font,'Outfit',sans-serif); font-size:12px;`;
+
+    const _ctxItem = (id, label) => {
+      const d = document.createElement('div');
+      d.id = id;
+      d.textContent = label;
+      d.style.cssText = `padding:6px 14px; cursor:pointer; color:var(--text-primary);
+        white-space:nowrap;`;
+      d.addEventListener('mouseover', () => d.style.background = 'var(--chrome-hover)');
+      d.addEventListener('mouseout',  () => d.style.background = '');
+      return d;
+    };
+    _vpCtx.appendChild(_ctxItem('vp-ctx-grid',    'Grid Spacing\u2026'));
+    _vpCtx.appendChild(_ctxItem('vp-ctx-fit',     'Fit to Site'));
+    _vpCtx.appendChild(_ctxItem('vp-ctx-reset',   'Reset Camera'));
+    _vpCtx.appendChild(_ctxItem('vp-ctx-grid-toggle', 'Toggle Grid'));
+    document.body.appendChild(_vpCtx);
+
+    let _vpCtxX = 0, _vpCtxY = 0;
     renderer.domElement.addEventListener('contextmenu', e => {
       e.preventDefault();
-      showGridSpacingPopup(e.clientX, e.clientY);
+      _vpCtxX = e.clientX; _vpCtxY = e.clientY;
+      // Clamp to viewport edges
+      const w = 178, h = 120;
+      _vpCtx.style.left    = Math.min(e.clientX, window.innerWidth  - w - 4) + 'px';
+      _vpCtx.style.top     = Math.min(e.clientY, window.innerHeight - h - 4) + 'px';
+      _vpCtx.style.display = 'block';
+    });
+    document.addEventListener('pointerdown', e => {
+      if (!_vpCtx.contains(e.target)) _vpCtx.style.display = 'none';
+    });
+
+    document.getElementById('vp-ctx-grid').addEventListener('click', () => {
+      _vpCtx.style.display = 'none';
+      showGridSpacingPopup(_vpCtxX, _vpCtxY);
+    });
+    document.getElementById('vp-ctx-fit').addEventListener('click', () => {
+      _vpCtx.style.display = 'none';
+      document.getElementById('fitSiteBtn')?.click();
+    });
+    document.getElementById('vp-ctx-reset').addEventListener('click', () => {
+      _vpCtx.style.display = 'none';
+      document.getElementById('resetCameraBtn')?.click();
+    });
+    document.getElementById('vp-ctx-grid-toggle').addEventListener('click', () => {
+      _vpCtx.style.display = 'none';
+      document.getElementById('toggleGridBtn')?.click();
     });
 
     // ── Helper: current auto major cell size ──────────────────────────────
