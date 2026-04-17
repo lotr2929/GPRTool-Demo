@@ -274,6 +274,18 @@ body {
   width: var(--panel-collapsed);
 }
 
+/* Drag-to-resize strip between each panel and the viewport */
+.panel-resize {
+  width: 4px;
+  flex-shrink: 0;
+  cursor: ew-resize;
+  background: transparent;
+  transition: background 0.15s;
+  z-index: 5;
+}
+.panel-resize:hover,
+.panel-resize.active { background: rgba(90,160,90,0.35); }
+
 .side-panel.collapsed .panel-content,
 .side-panel.collapsed .panel-header h3 {
   display: none;

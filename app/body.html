@@ -20,7 +20,7 @@
             <svg class="tool-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M8 1.5C5.5 1.5 3.5 3.5 3.5 6c0 3.5 4.5 8.5 4.5 8.5s4.5-5 4.5-8.5c0-2.5-2-4.5-4.5-4.5z"/><circle cx="8" cy="6" r="1.5"/></svg>
             Select Site&#8230;
           </button>
-          <button class="command-btn" id="importCADMapperBtn" title="Import site context from CADMapper DXF">
+          <button class="command-btn" id="importCADMapperBtn" title="Import site context from CADMapper">
             <svg class="tool-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M3 12h10M8 3v7M5 7l3 3 3-3"/><rect x="1.5" y="11" width="13" height="2.5" rx="0.5"/></svg>
             Import from CADMapper&#8230;
           </button>
@@ -146,6 +146,7 @@
 
     </div>
   </aside>
+  <div class="panel-resize" id="left-panel-resize" data-target="left-panel" data-dir="e"></div>
 
   <!-- Center: Viewport -->
   <main id="viewport" class="viewport">
@@ -204,6 +205,7 @@
       </button>
     </div>
   </main>
+  <div class="panel-resize" id="right-panel-resize" data-target="right-panel" data-dir="w"></div>
 
   <!-- Right Panel: Properties -->
   <aside id="right-panel" class="side-panel">

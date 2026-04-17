@@ -540,43 +540,14 @@
     });
 
     /* ============================================================
-       VIEWPORT RIGHT-CLICK CONTEXT MENU
+       VIEWPORT RIGHT-CLICK — GRID SPACING POPUP
     ============================================================ */
-    const _vpCtx = document.createElement('div');
-    _vpCtx.id = 'viewport-ctx-menu';
-    _vpCtx.style.cssText = `
-      display:none; position:fixed; z-index:900; min-width:160px;
-      background:var(--chrome-panel,#333); border:1px solid var(--chrome-border,#444);
-      border-radius:4px; box-shadow:0 4px 16px rgba(0,0,0,0.4); padding:3px 0;
-      font-family:var(--font-ui,'Outfit',sans-serif); font-size:12px;`;
-    _vpCtx.innerHTML = `
-      <div id="vp-ctx-major" style="padding:6px 14px;cursor:pointer;color:var(--text-primary,#e8e8e8);"
-        onmouseover="this.style.background='var(--chrome-hover,#3a3a3a)'"
-        onmouseout="this.style.background=''">Major Grid Spacing&#8230;</div>
-      <div id="vp-ctx-minor" style="padding:6px 14px;cursor:pointer;color:var(--text-primary,#e8e8e8);"
-        onmouseover="this.style.background='var(--chrome-hover,#3a3a3a)'"
-        onmouseout="this.style.background=''">Minor Grid Spacing&#8230;</div>`;
-    document.body.appendChild(_vpCtx);
-
     renderer.domElement.addEventListener('contextmenu', e => {
       e.preventDefault();
-      _vpCtx.style.left    = e.clientX + 'px';
-      _vpCtx.style.top     = e.clientY + 'px';
-      _vpCtx.style.display = 'block';
-    });
-    document.addEventListener('pointerdown', e => {
-      if (!_vpCtx.contains(e.target)) _vpCtx.style.display = 'none';
-    });
-    document.getElementById('vp-ctx-major').addEventListener('click', () => {
-      _vpCtx.style.display = 'none';
-      showMajorGridPopup();
-    });
-    document.getElementById('vp-ctx-minor').addEventListener('click', () => {
-      _vpCtx.style.display = 'none';
-      showMinorGridPopup();
+      showGridSpacingPopup(e.clientX, e.clientY);
     });
 
-    // ── Shared helper: compute current major cell size ─────────────────────
+    // ── Helper: current auto major cell size ──────────────────────────────
     function _majorCellSize() {
       const rawCell = _lastSiteSpan / 10;
       return manualGridSpacing
@@ -584,120 +555,132 @@
         : (rawCell < 50 ? 50 : rawCell < 100 ? 100 : rawCell < 250 ? 250 : 500);
     }
 
-    // ── Major Grid Spacing popup ───────────────────────────────────────────
-    function showMajorGridPopup() {
-      let pop = document.getElementById('major-grid-popup');
+    // ── Combined Grid Spacing popup ───────────────────────────────────────
+    function showGridSpacingPopup(cx, cy) {
+      let pop = document.getElementById('grid-spacing-popup');
       if (pop) { pop.remove(); return; }
       pop = document.createElement('div');
-      pop.id = 'major-grid-popup';
-      pop.className = 'alarm-popup';
+      pop.id = 'grid-spacing-popup';
+      pop.style.cssText = `
+        position:fixed; z-index:1000;
+        background:var(--chrome-bg,#2c2c2c); border:1px solid var(--chrome-border,#444);
+        border-radius:6px; box-shadow:0 4px 20px rgba(0,0,0,0.55);
+        padding:12px 14px; width:214px;
+        font-family:var(--font-ui,'Outfit',sans-serif); font-size:12px;
+        color:var(--text-primary,#e8e8e8);`;
       pop.innerHTML = `
-        <h4 style="margin:0 0 10px;font-size:13px;">Major Grid Spacing</h4>
-        <div style="display:flex;align-items:center;gap:6px;margin-bottom:10px;">
-          <input type="number" id="mgj-input" min="1" max="10000" step="1"
-            style="width:80px;background:var(--chrome-input,#1a1a1a);
-                   border:1px solid var(--chrome-border,#444);border-radius:4px;
-                   color:var(--text-primary,#e8e8e8);font-size:13px;
-                   padding:5px 8px;outline:none;text-align:right;">
-          <span style="font-size:13px;color:var(--text-secondary,#aaa);font-weight:600;">m</span>
+        <div style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.07em;
+                    color:var(--text-secondary,#888);margin-bottom:10px;">Grid Spacing</div>
+        <div style="display:grid;grid-template-columns:44px 1fr auto;
+                    gap:7px 8px;align-items:center;margin-bottom:6px;">
+          <span style="font-size:11px;color:var(--text-secondary,#aaa);">Major Grid</span>
+          <input type="number" id="gs-major" min="1" max="10000" step="1" placeholder="auto"
+            style="background:var(--chrome-input,#1a1a1a);border:1px solid var(--chrome-border,#444);
+                   border-radius:4px;color:var(--text-primary,#e8e8e8);font-size:12px;
+                   padding:4px 6px;outline:none;text-align:right;
+                   width:100%;box-sizing:border-box;">
+          <span style="font-size:11px;color:var(--text-secondary,#888);">m</span>
+          <span style="font-size:11px;color:var(--text-secondary,#aaa);">Minor Grid</span>
+          <input type="number" id="gs-minor" min="2" max="100" step="1" placeholder="off"
+            style="background:var(--chrome-input,#1a1a1a);border:1px solid var(--chrome-border,#444);
+                   border-radius:4px;color:var(--text-primary,#e8e8e8);font-size:12px;
+                   padding:4px 6px;outline:none;text-align:right;
+                   width:100%;box-sizing:border-box;">
+          <span style="font-size:11px;color:var(--text-secondary,#888);">lines</span>
         </div>
+        <div id="gs-hint" style="font-size:10px;color:var(--text-secondary,#666);
+                                  margin-bottom:10px;min-height:13px;"></div>
         <div style="display:flex;gap:6px;">
-          <button id="mgj-ok" style="
-            flex:1;background:var(--accent-mid,#4a8a4a);color:#fff;
+          <button id="gs-ok" style="flex:1;background:var(--accent-mid,#4a8a4a);color:#fff;
             border:none;border-radius:4px;font-size:12px;padding:5px 0;cursor:pointer;">OK</button>
-          <button id="mgj-cancel" style="
-            flex:1;background:var(--chrome-border,#444);color:var(--text-primary,#e8e8e8);
-            border:none;border-radius:4px;font-size:12px;padding:5px 0;cursor:pointer;">Cancel</button>
-          <button id="mgj-auto" style="
-            flex:1;background:none;color:var(--text-secondary,#888);
+          <button id="gs-cancel" style="flex:1;background:var(--chrome-border,#444);
+            color:var(--text-primary,#e8e8e8);border:none;border-radius:4px;
+            font-size:12px;padding:5px 0;cursor:pointer;">Cancel</button>
+          <button id="gs-reset" style="flex:1;background:none;color:var(--text-secondary,#888);
             border:1px solid var(--chrome-border,#444);border-radius:4px;
-            font-size:12px;padding:5px 0;cursor:pointer;"
-            title="Reset to automatic spacing">Auto</button>
+            font-size:12px;padding:5px 0;cursor:pointer;" title="Reset both to auto">Reset</button>
         </div>`;
       document.body.appendChild(pop);
-      const inp = document.getElementById('mgj-input');
-      inp.value = manualGridSpacing ?? '';
-      inp.focus(); inp.select();
-      const apply = (v) => {
-        manualGridSpacing = (v > 0) ? v : null;
-        updateSceneHelpers(_lastSiteSpan);
-        showFeedback(manualGridSpacing ? `Major grid: ${manualGridSpacing} m` : 'Major grid: auto');
-        pop.remove();
-      };
-      inp.addEventListener('keydown', e => {
-        if (e.key === 'Enter')  apply(parseInt(inp.value, 10));
-        if (e.key === 'Escape') pop.remove();
-      });
-      document.getElementById('mgj-ok').addEventListener('click',     () => apply(parseInt(inp.value, 10)));
-      document.getElementById('mgj-cancel').addEventListener('click', () => pop.remove());
-      document.getElementById('mgj-auto').addEventListener('click',   () => apply(0));
-    }
 
-    // ── Minor Grid Spacing popup ───────────────────────────────────────────
-    function showMinorGridPopup() {
-      let pop = document.getElementById('minor-grid-popup');
-      if (pop) { pop.remove(); return; }
-      pop = document.createElement('div');
-      pop.id = 'minor-grid-popup';
-      pop.className = 'alarm-popup';
-      pop.innerHTML = `
-        <h4 style="margin:0 0 10px;font-size:13px;">Minor Grid Spacing</h4>
-        <div style="display:flex;align-items:center;gap:6px;margin-bottom:5px;">
-          <input type="number" id="mnr-input" min="2" max="100" step="1"
-            style="width:80px;background:var(--chrome-input,#1a1a1a);
-                   border:1px solid var(--chrome-border,#444);border-radius:4px;
-                   color:var(--text-primary,#e8e8e8);font-size:13px;
-                   padding:5px 8px;outline:none;text-align:right;">
-          <span style="font-size:13px;color:var(--text-secondary,#aaa);font-weight:600;">lines</span>
-        </div>
-        <div id="mnr-hint" style="font-size:10px;color:var(--text-secondary,#666);
-                                   margin-bottom:10px;min-height:14px;"></div>
-        <div style="display:flex;gap:6px;">
-          <button id="mnr-ok" style="
-            flex:1;background:var(--accent-mid,#4a8a4a);color:#fff;
-            border:none;border-radius:4px;font-size:12px;padding:5px 0;cursor:pointer;">OK</button>
-          <button id="mnr-cancel" style="
-            flex:1;background:var(--chrome-border,#444);color:var(--text-primary,#e8e8e8);
-            border:none;border-radius:4px;font-size:12px;padding:5px 0;cursor:pointer;">Cancel</button>
-          <button id="mnr-off" style="
-            flex:1;background:none;color:var(--text-secondary,#888);
-            border:1px solid var(--chrome-border,#444);border-radius:4px;
-            font-size:12px;padding:5px 0;cursor:pointer;"
-            title="Remove minor grid">Off</button>
-        </div>`;
-      document.body.appendChild(pop);
-      const inp  = document.getElementById('mnr-input');
-      const hint = document.getElementById('mnr-hint');
-      inp.value = manualMinorDivisions ?? '';
+      // Position near cursor, nudge away from viewport edges
+      pop.style.left = Math.min(cx + 4, window.innerWidth  - 222 - 8) + 'px';
+      pop.style.top  = Math.min(cy + 4, window.innerHeight - 158 - 8) + 'px';
+
+      const majInp = document.getElementById('gs-major');
+      const minInp = document.getElementById('gs-minor');
+      const hint   = document.getElementById('gs-hint');
+      majInp.value = manualGridSpacing    ?? '';
+      minInp.value = manualMinorDivisions ?? '';
+
       const updateHint = () => {
-        const n = parseInt(inp.value, 10);
-        if (n >= 2) {
-          const sub = _majorCellSize() / n;
-          hint.textContent = `Sub-cell: ${sub % 1 === 0 ? sub : sub.toFixed(1)} m`;
-        } else { hint.textContent = ''; }
+        const n    = parseInt(minInp.value, 10);
+        const cell = parseInt(majInp.value, 10) > 0
+          ? parseInt(majInp.value, 10) : _majorCellSize();
+        hint.textContent = (n >= 2)
+          ? `Sub-cell: ${(cell / n) % 1 === 0 ? (cell / n) : (cell / n).toFixed(1)} m`
+          : '';
       };
       updateHint();
-      inp.addEventListener('input', updateHint);
-      inp.focus(); inp.select();
-      const apply = (n) => {
-        manualMinorDivisions = (n >= 2) ? n : null;
+      majInp.addEventListener('input', updateHint);
+      minInp.addEventListener('input', updateHint);
+      majInp.focus(); majInp.select();
+
+      const applyAll = (maj, min) => {
+        manualGridSpacing    = (maj > 0)  ? maj : null;
+        manualMinorDivisions = (min >= 2) ? min : null;
         updateSceneHelpers(_lastSiteSpan);
-        if (manualMinorDivisions) {
-          const sub = _majorCellSize() / manualMinorDivisions;
-          showFeedback(`Minor grid: ${manualMinorDivisions} lines · ${sub % 1 === 0 ? sub : sub.toFixed(1)} m`);
-        } else {
-          showFeedback('Minor grid: off');
-        }
+        const cell = _majorCellSize();
+        const s1   = manualGridSpacing    ? `major ${manualGridSpacing} m` : 'major auto';
+        const sub  = manualMinorDivisions ? cell / manualMinorDivisions : null;
+        const s2   = sub
+          ? `minor ${manualMinorDivisions} lines · ${sub % 1 === 0 ? sub : sub.toFixed(1)} m`
+          : 'minor off';
+        showFeedback(`Grid — ${s1}  ·  ${s2}`);
         pop.remove();
       };
-      inp.addEventListener('keydown', e => {
-        if (e.key === 'Enter')  apply(parseInt(inp.value, 10));
+      const onKey = e => {
+        if (e.key === 'Enter')  applyAll(parseInt(majInp.value, 10), parseInt(minInp.value, 10));
         if (e.key === 'Escape') pop.remove();
-      });
-      document.getElementById('mnr-ok').addEventListener('click',     () => apply(parseInt(inp.value, 10)));
-      document.getElementById('mnr-cancel').addEventListener('click', () => pop.remove());
-      document.getElementById('mnr-off').addEventListener('click',    () => apply(0));
+      };
+      majInp.addEventListener('keydown', onKey);
+      minInp.addEventListener('keydown', onKey);
+      document.getElementById('gs-ok').addEventListener('click', () =>
+        applyAll(parseInt(majInp.value, 10), parseInt(minInp.value, 10)));
+      document.getElementById('gs-cancel').addEventListener('click', () => pop.remove());
+      document.getElementById('gs-reset').addEventListener('click',  () => applyAll(0, 0));
     }
+
+    /* ============================================================
+       PANEL RESIZE (drag handle between panel and viewport)
+    ============================================================ */
+    document.querySelectorAll('.panel-resize').forEach(handle => {
+      handle.addEventListener('pointerdown', e => {
+        e.preventDefault();
+        const panel  = document.getElementById(handle.dataset.target);
+        if (!panel || panel.classList.contains('collapsed')) return;
+        const isWest = handle.dataset.dir === 'w';   // right-panel handle
+        const startX = e.clientX;
+        const startW = panel.offsetWidth;
+        panel.style.transition = 'none';
+        handle.classList.add('active');
+        handle.setPointerCapture(e.pointerId);
+
+        const onMove = ev => {
+          const dx   = ev.clientX - startX;
+          const newW = isWest ? startW - dx : startW + dx;
+          panel.style.width = Math.max(160, Math.min(460, newW)) + 'px';
+        };
+        const onUp = () => {
+          panel.style.transition = '';
+          handle.classList.remove('active');
+          handle.releasePointerCapture(e.pointerId);
+          document.removeEventListener('pointermove', onMove);
+          document.removeEventListener('pointerup',   onUp);
+        };
+        document.addEventListener('pointermove', onMove);
+        document.addEventListener('pointerup',   onUp);
+      });
+    });
 
     renderer.domElement.addEventListener('wheel', e => {
       if (currentMode !== '2d') return;
