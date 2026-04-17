@@ -2203,14 +2203,17 @@
       controls.update();
       updateNorthRotation();
 
-      // Grid and axes follow Design North so building lines stay
-      // vertical/horizontal on screen. dnDeg +ve = East = clockwise.
-      // Three.js rotation.y +ve = counterclockwise, so we negate.
+      // Grid, axes and all scene geometry follow Design North so everything
+      // stays aligned when the user rotates the north point.
+      // dnDeg +ve = East = clockwise; Three.js rotation.y +ve = counterclockwise, so negate.
       const _dn    = getDesignNorthAngle();
       const _dnRad = (_dn ?? 0) * Math.PI / 180;
       if (gridHelper)      gridHelper.rotation.y      = -_dnRad;
       if (gridHelperMinor) { gridHelperMinor.rotation.y = -_dnRad; gridHelperMinor.visible = gridHelper?.visible ?? false; }
-      if (axesHelper)  axesHelper.rotation.y  = -_dnRad;
+      if (axesHelper)      axesHelper.rotation.y      = -_dnRad;
+      if (cadmapperGroup)  cadmapperGroup.rotation.y  = -_dnRad;
+      if (importedModel)   importedModel.rotation.y   = -_dnRad;
+      if (siteBoundaryLine) siteBoundaryLine.rotation.y = -_dnRad;
 
       renderer.render(scene, camera);
       updateSitePinDOM();
