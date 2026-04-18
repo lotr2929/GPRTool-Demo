@@ -11,18 +11,18 @@ import { renderCompassGizmo, updateGizmoOverlay } from './north-point-3d.js';
 export function syncViewportBackground() {
   const css = getComputedStyle(document.documentElement)
     .getPropertyValue('--vp-bgcolor').trim() || '#ffffff';
-  renderer.setClearColor(new THREE.Color(css), 1.0);
+  state.renderer.setClearColor(new THREE.Color(css), 1.0);
 }
 
 export function update2DCamera() {
-  // If in surface canvas mode, the camera is managed by fitSurfaceCamera -- don't override it
+  // If in surface canvas mode, the state.camera is managed by fitSurfaceCamera -- don't override it
   if (state.currentMode === '2d' && state.selectedSurface) return;
-  camera2D.zoom = state.zoom2D;
-  camera2D.position.set(pan2D.x, 10000, pan2D.z);
+  state.camera2D.zoom = state.zoom2D;
+  state.camera2D.position.set(state.pan2D.x, 10000, state.pan2D.z);
   // up vector encodes the view rotation: state.rotate2D=0 → north (-Z) points up on screen
-  camera2D.up.set(Math.sin(state.rotate2D), 0, -Math.cos(state.rotate2D));
-  camera2D.lookAt(pan2D.x, 0, pan2D.z);
-  camera2D.updateProjectionMatrix();
+  state.camera2D.up.set(Math.sin(state.rotate2D), 0, -Math.cos(state.rotate2D));
+  state.camera2D.lookAt(state.pan2D.x, 0, state.pan2D.z);
+  state.camera2D.updateProjectionMatrix();
 }
 
 export function fit2DCamera(box) {
@@ -37,13 +37,13 @@ export function fit2DCamera(box) {
   const halfH  = Math.max(siteW / (2 * aspect), siteH / 2, 100); // min 200m view
 
   state.base2DhalfH     = halfH;
-  camera2D.left   = -halfH * aspect;
-  camera2D.right  =  halfH * aspect;
-  camera2D.top    =  halfH;
-  camera2D.bottom = -halfH;
+  state.camera2D.left   = -halfH * aspect;
+  state.camera2D.right  =  halfH * aspect;
+  state.camera2D.top    =  halfH;
+  state.camera2D.bottom = -halfH;
 
-  pan2D.x = center.x;
-  pan2D.z = center.z;
+  state.pan2D.x = center.x;
+  state.pan2D.z = center.z;
   state.zoom2D  = 1;
 
   update2DCamera();
@@ -56,12 +56,12 @@ export function fit3DCamera(box) {
   box.getCenter(center);
 
   const dist = Math.max(size.x, size.y, size.z) * 1.5;
-  camera3D.position.set(center.x + dist * 0.7, dist, center.z + dist * 0.7);
-  camera3D.near = Math.max(0.1, dist * 0.01);
-  camera3D.far  = dist * 20;
-  camera3D.updateProjectionMatrix();
-  controls3D.target.copy(center);
-  controls3D.update();
+  state.camera3D.position.set(center.x + dist * 0.7, dist, center.z + dist * 0.7);
+  state.camera3D.near = Math.max(0.1, dist * 0.01);
+  state.camera3D.far  = dist * 20;
+  state.camera3D.updateProjectionMatrix();
+  state.controls3D.target.copy(center);
+  state.controls3D.update();
 }
 
 export function drawSurfaceCanvasOutline(surface) {
@@ -183,25 +183,25 @@ export function fitSurfaceCamera(surface) {
   if (halfW / halfH < aspect) halfW = halfH * aspect;
   else halfH = halfW / aspect;
 
-  camera2D.left   = -halfW;
-  camera2D.right  =  halfW;
-  camera2D.top    =  halfH;
-  camera2D.bottom = -halfH;
-  camera2D.near   = 0.1;
-  camera2D.far    = Math.max(size.x, size.y, size.z) * 12;
-  camera2D.zoom   = 1;
+  state.camera2D.left   = -halfW;
+  state.camera2D.right  =  halfW;
+  state.camera2D.top    =  halfH;
+  state.camera2D.bottom = -halfH;
+  state.camera2D.near   = 0.1;
+  state.camera2D.far    = Math.max(size.x, size.y, size.z) * 12;
+  state.camera2D.zoom   = 1;
 
-  camera2D.position.copy(camPos);
-  camera2D.up.copy(up);
-  camera2D.lookAt(centre);
-  camera2D.updateProjectionMatrix();
+  state.camera2D.position.copy(camPos);
+  state.camera2D.up.copy(up);
+  state.camera2D.lookAt(centre);
+  state.camera2D.updateProjectionMatrix();
 
-  pan2D.x = 0; pan2D.z = 0; state.zoom2D = 1;
+  state.pan2D.x = 0; state.pan2D.z = 0; state.zoom2D = 1;
   state.base2DhalfH = halfH;
 
-  camera2D.userData.surfaceCentre = centre.clone();
-  camera2D.userData.surfaceNormal = camNormal.clone();
-  camera2D.userData.surfaceUp     = up.clone();
+  state.camera2D.userData.surfaceCentre = centre.clone();
+  state.camera2D.userData.surfaceNormal = camNormal.clone();
+  state.camera2D.userData.surfaceUp     = up.clone();
 }
 
 export function switchMode(mode) {
@@ -212,35 +212,35 @@ export function switchMode(mode) {
     btn.classList.toggle('active', btn.dataset.mode === mode));
 
   if (mode === '2d') {
-    camera   = camera2D;
+    state.camera = state.camera2D;
     controls = controls2D;
 
     if (state.selectedSurface) {
       fitSurfaceCamera(state.selectedSurface);
       drawSurfaceCanvasOutline(state.selectedSurface);
       setGridVisible(false);
-      if (axesHelper)  axesHelper.visible = false;          const typeLabels = { ground: 'Ground plane', roof: 'Roof plane', wall: 'Wall plane', sloped: 'Sloped surface' };
+      if (state.axesHelper)  state.axesHelper.visible = false;          const typeLabels = { ground: 'Ground plane', roof: 'Roof plane', wall: 'Wall plane', sloped: 'Sloped surface' };
       document.getElementById('status-mode').textContent = '2D';
       const modeLabel = state.canvasMode === 'ortho' ? 'Ortho' : 'Surface';
       showFeedback(`2D canvas [${modeLabel}] \u2014 ${typeLabels[state.selectedSurface.type] || state.selectedSurface.type} \u2014 ${state.selectedSurface.area} m\u00b2`, 0);
     } else {
       clearSurfaceCanvasOutline();
       // Only show grid if no map tiles are active
-      setGridVisible(!mapTileGroup);
-      if (axesHelper) axesHelper.visible = true;
-      if (axesYLine)  axesYLine.visible  = false;
+      setGridVisible(!state.mapTileGroup);
+      if (state.axesHelper) state.axesHelper.visible = true;
+      if (state.axesYLine)  state.axesYLine.visible  = false;
       if (state.siteBoundaryLine) fit2DCamera(new THREE.Box3().setFromObject(state.siteBoundaryLine));
       else if (state.importedModel) fit2DCamera(new THREE.Box3().setFromObject(state.importedModel));
       document.getElementById('status-mode').textContent = '2D';
       showFeedback('2D Plan View');
     }
   } else {
-    camera   = camera3D;
-    controls = controls3D;
+    state.camera = state.camera3D;
+    controls = state.controls3D;
     clearSurfaceCanvasOutline();
     setGridVisible(false);  // grid hidden in 3D (Design Grid also hidden)
-    if (axesHelper) axesHelper.visible = true;
-    if (axesYLine)  axesYLine.visible  = true;
+    if (state.axesHelper) state.axesHelper.visible = true;
+    if (state.axesYLine)  state.axesYLine.visible  = true;
     const target = state.importedModel
       ? new THREE.Box3().setFromObject(state.importedModel)
       : (state.siteBoundaryLine ? new THREE.Box3().setFromObject(state.siteBoundaryLine) : null);
@@ -258,42 +258,42 @@ export function resizeToContainer() {
     resizeRAF = null;
     const w = container.clientWidth  || 1;
     const h = container.clientHeight || 1;
-    renderer.setSize(w, h, false);
-    camera3D.aspect = w / h;
-    camera3D.updateProjectionMatrix();
+    state.renderer.setSize(w, h, false);
+    state.camera3D.aspect = w / h;
+    state.camera3D.updateProjectionMatrix();
     if (state.siteBoundaryLine) {
       fit2DCamera(new THREE.Box3().setFromObject(state.siteBoundaryLine));
     } else {
       const aspect = w / h;
       const halfH  = state.base2DhalfH || 50;
-      camera2D.left   = -halfH * aspect;
-      camera2D.right  =  halfH * aspect;
-      camera2D.updateProjectionMatrix();
+      state.camera2D.left   = -halfH * aspect;
+      state.camera2D.right  =  halfH * aspect;
+      state.camera2D.updateProjectionMatrix();
       update2DCamera();
     }
   });
 }
 
 export function toggleAxes() {
-  if (!axesHelper) return;
-  axesHelper.visible = !axesHelper.visible;
-  showFeedback('Axes ' + (axesHelper.visible ? 'on' : 'off'));
+  if (!state.axesHelper) return;
+  state.axesHelper.visible = !state.axesHelper.visible;
+  showFeedback('Axes ' + (state.axesHelper.visible ? 'on' : 'off'));
 }
 
 export function updateGridVisibility(forceMode) {
   const mode      = forceMode ?? state.currentMode;
-  const inView    = (mode === '2d') && !mapTileGroup;
+  const inView    = (mode === '2d') && !state.mapTileGroup;
   const hasDN     = (getDesignNorthAngle() ?? 0) !== 0;
-  const showDG    = inView && hasDN  && !!designGridManager?.grids?.size;
+  const showDG    = inView && hasDN  && !!state.designGridManager?.grids?.size;
   const showCAD   = inView && !showDG;
-  if (gridHelper) gridHelper.visible = showCAD;
-  if (designGridManager) designGridManager.setVisible(showDG);
+  if (state.gridHelper) state.gridHelper.visible = showCAD;
+  if (state.designGridManager) state.designGridManager.setVisible(showDG);
 }
 
 export function setGridVisible(v) {
   if (!v) {
-    if (gridHelper) gridHelper.visible = false;
-    if (designGridManager) designGridManager.setVisible(false);
+    if (state.gridHelper) state.gridHelper.visible = false;
+    if (state.designGridManager) state.designGridManager.setVisible(false);
   } else {
     updateGridVisibility();
   }

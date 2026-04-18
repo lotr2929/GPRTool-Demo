@@ -89,24 +89,16 @@
     const canvas    = document.getElementById('three-canvas');
     const container = canvas.parentElement;
 
-    let mapTileGroup     = null;
     // ── CAD Universe grid (REAL WORLD — True North fixed, never rotates) ─────
-    let gridHelper           = null;
-    let gridHelperMinor      = null;
     // CAD Grid spacing — auto-calculated from site span unless overridden
     let manualGridSpacing    = null;   // major (m); null = auto
     let manualMinorDivisions = null;   // sub-divisions; null = none
     let _lastSiteSpan        = 1000;
-    let axesHelper           = null;
     // ── Design World state (overlays only — never stores geographic data) ─────
     let designGridManager    = null;   // Design Grid system (see js/design-grid.js)
     // Design Grid spacing — starts equal to CAD values at import, user-controlled thereafter
-    let dgSpacing            = null;   // major (m); null = inherit from CAD
-    let dgMinorDivisions     = null;   // sub-divisions; null = none
-    let axesYLine        = null;  // Y (green) — shown in 3D only
     let feedbackTimer    = null;
     // ── Lot boundary (REAL WORLD — WGS84 GeoJSON → Three.js line) ────────────
-    let lotBoundaryGroup = null;   // THREE.Group of boundary lines in scene
 
     // Surface registry — populated after model load
     // Each entry: { id, mesh, type, area, elevation, normalAngle, originalMaterial }
@@ -125,15 +117,15 @@
       hover:    new THREE.MeshBasicMaterial({ color: 0xd8d8d8, side: THREE.DoubleSide }),
       selected: new THREE.MeshBasicMaterial({ color: 0xc8e8c8, side: THREE.DoubleSide }),
     };
-    state.MAT = MAT; // bridge for state.surfaces.js
+    state.MAT = MAT; // bridge for surfaces.js
 
-    // ── Bridge MAT to state for state.surfaces.js ─────────────────────────────
+    // ── Bridge MAT to state for surfaces.js ─────────────────────────────
     // (MAT is assigned below after it is created)
     /* ============================================================
        RENDERER
     ============================================================ */
     const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    state.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 
     const scene = new THREE.Scene();
 
@@ -151,41 +143,41 @@
        CAMERAS
     ============================================================ */
     const camera3D = new THREE.PerspectiveCamera(45, 2, 0.1, 10000);
-    camera3D.position.set(100, 100, 100);
+    state.camera3D.position.set(100, 100, 100);
 
     const camera2D = new THREE.OrthographicCamera(-50, 50, 50, -50, 0.1, 20000);
-    camera2D.position.set(0, 10000, 0);
-    camera2D.quaternion.setFromEuler(new THREE.Euler(-Math.PI / 2, 0, 0));
+    state.camera2D.position.set(0, 10000, 0);
+    state.camera2D.quaternion.setFromEuler(new THREE.Euler(-Math.PI / 2, 0, 0));
 
-    let camera = camera2D;
 
     // Bridge cameras to state
     state.camera3D = camera3D;
     state.camera2D = camera2D;
-    state.camera   = camera;
+    state.camera   = state.camera2D;
 
     /* ============================================================
        CONTROLS
     ============================================================ */
-    const controls3D = new OrbitControls(camera3D, renderer.domElement);
-    controls3D.enableDamping      = true;
-    controls3D.dampingFactor      = 0.08;
-    controls3D.rotateSpeed        = 0.6;
-    controls3D.zoomSpeed          = 0.8;
-    controls3D.panSpeed           = 1.0;
-    controls3D.screenSpacePanning = true;
-    controls3D.minDistance        = 1;
-    controls3D.maxDistance        = 5000;
-    controls3D.minPolarAngle      = 0.01;
-    controls3D.maxPolarAngle      = Math.PI * 0.85;
-    controls3D.mouseButtons       = { LEFT: THREE.MOUSE.ROTATE, MIDDLE: THREE.MOUSE.DOLLY, RIGHT: THREE.MOUSE.PAN };
-    controls3D.touches            = { ONE: THREE.TOUCH.ROTATE, TWO: THREE.TOUCH.DOLLY_PAN };
+    const controls3D = new OrbitControls(camera3D, state.renderer.domElement);
+    state.controls3D = controls3D; // bridge
+    state.controls3D.enableDamping      = true;
+    state.controls3D.dampingFactor      = 0.08;
+    state.controls3D.rotateSpeed        = 0.6;
+    state.controls3D.zoomSpeed          = 0.8;
+    state.controls3D.panSpeed           = 1.0;
+    state.controls3D.screenSpacePanning = true;
+    state.controls3D.minDistance        = 1;
+    state.controls3D.maxDistance        = 5000;
+    state.controls3D.minPolarAngle      = 0.01;
+    state.controls3D.maxPolarAngle      = Math.PI * 0.85;
+    state.controls3D.mouseButtons       = { LEFT: THREE.MOUSE.ROTATE, MIDDLE: THREE.MOUSE.DOLLY, RIGHT: THREE.MOUSE.PAN };
+    state.controls3D.touches            = { ONE: THREE.TOUCH.ROTATE, TWO: THREE.TOUCH.DOLLY_PAN };
 
     const controls2D = { update: () => {}, saveState: () => {}, target: new THREE.Vector3() };
 
 
 
-    renderer.domElement.addEventListener('pointerdown', e => {
+    state.renderer.domElement.addEventListener('pointerdown', e => {
       if (state.currentMode !== '2d') return;
       if (e.button === 1) {
         // Middle mouse — rotate the 2D view (not in surface canvas mode)
@@ -193,16 +185,16 @@
         e.preventDefault();
         state.rotate2DActive = true;
         state.rotate2DLast   = { x: e.clientX, y: e.clientY };
-        renderer.domElement.setPointerCapture(e.pointerId);
+        state.renderer.domElement.setPointerCapture(e.pointerId);
       } else if (e.button === 0) {
         // Left mouse — pan
         state.pan2DActive = true;
         state.pan2DLast   = { x: e.clientX, y: e.clientY };
-        renderer.domElement.setPointerCapture(e.pointerId);
+        state.renderer.domElement.setPointerCapture(e.pointerId);
       }
     });
 
-    renderer.domElement.addEventListener('pointermove', e => {
+    state.renderer.domElement.addEventListener('pointermove', e => {
       if (state.currentMode !== '2d') return;
 
       if (state.rotate2DActive) {
@@ -219,43 +211,43 @@
       const dy = e.clientY - state.pan2DLast.y;
       state.pan2DLast = { x: e.clientX, y: e.clientY };
 
-      if (state.selectedSurface && camera2D.userData.surfaceCentre) {
+      if (state.selectedSurface && state.camera2D.userData.surfaceCentre) {
         // Surface canvas mode: pan along surface U/V axes (no state.rotate2D here)
-        const frustumW = (camera2D.right - camera2D.left) / camera2D.zoom;
-        const frustumH = (camera2D.top - camera2D.bottom) / camera2D.zoom;
+        const frustumW = (state.camera2D.right - state.camera2D.left) / state.camera2D.zoom;
+        const frustumH = (state.camera2D.top - state.camera2D.bottom) / state.camera2D.zoom;
         const scaleX   = frustumW / container.clientWidth;
         const scaleY   = frustumH / container.clientHeight;
 
-        const n    = camera2D.userData.surfaceNormal.clone();
-        const up   = camera2D.userData.surfaceUp.clone();
+        const n    = state.camera2D.userData.surfaceNormal.clone();
+        const up   = state.camera2D.userData.surfaceUp.clone();
         const right = new THREE.Vector3().crossVectors(up, n).normalize();
 
-        camera2D.position.addScaledVector(right,  dx * scaleX);
-        camera2D.position.addScaledVector(up,     -dy * scaleY);
-        camera2D.lookAt(
-          camera2D.position.clone().addScaledVector(n, -camera2D.far * 0.5)
+        state.camera2D.position.addScaledVector(right,  dx * scaleX);
+        state.camera2D.position.addScaledVector(up,     -dy * scaleY);
+        state.camera2D.lookAt(
+          state.camera2D.position.clone().addScaledVector(n, -state.camera2D.far * 0.5)
         );
-        camera2D.updateProjectionMatrix();
+        state.camera2D.updateProjectionMatrix();
       } else {
         // Top-down plan mode — pan is rotation-aware
         // Screen right in world = (cos(r), 0, sin(r))
         // Screen down in world  = (sin(r), 0, -cos(r)) reversed for pan direction
-        const frustumW = (camera2D.right - camera2D.left) / camera2D.zoom;
-        const frustumH = (camera2D.top - camera2D.bottom) / camera2D.zoom;
+        const frustumW = (state.camera2D.right - state.camera2D.left) / state.camera2D.zoom;
+        const frustumH = (state.camera2D.top - state.camera2D.bottom) / state.camera2D.zoom;
         const r   = state.rotate2D;
         const scX = frustumW / container.clientWidth;
         const scZ = frustumH / container.clientHeight;
-        pan2D.x -= dx * scX * Math.cos(r) - dy * scZ * Math.sin(r);
-        pan2D.z -= dx * scX * Math.sin(r) + dy * scZ * Math.cos(r);
+        state.pan2D.x -= dx * scX * Math.cos(r) - dy * scZ * Math.sin(r);
+        state.pan2D.z -= dx * scX * Math.sin(r) + dy * scZ * Math.cos(r);
         update2DCamera();
       }
     });
 
-    renderer.domElement.addEventListener('pointerup', e => {
+    state.renderer.domElement.addEventListener('pointerup', e => {
       if (state.currentMode !== '2d') return;
       state.pan2DActive    = false;
       state.rotate2DActive = false;
-      renderer.domElement.releasePointerCapture(e.pointerId);
+      state.renderer.domElement.releasePointerCapture(e.pointerId);
     });
 
     /* ============================================================
@@ -287,7 +279,7 @@
     document.body.appendChild(_vpCtx);
 
     let _vpCtxX = 0, _vpCtxY = 0;
-    renderer.domElement.addEventListener('contextmenu', e => {
+    state.renderer.domElement.addEventListener('contextmenu', e => {
       e.preventDefault();
       _vpCtxX = e.clientX; _vpCtxY = e.clientY;
       // Clamp to viewport edges
@@ -353,17 +345,17 @@
       });
     });
 
-    renderer.domElement.addEventListener('wheel', e => {
+    state.renderer.domElement.addEventListener('wheel', e => {
       if (state.currentMode !== '2d') return;
       e.preventDefault();
       const factor = e.deltaY > 0 ? 0.9 : 1.1;
       if (state.selectedSurface) {
         // Surface canvas zoom: scale the orthographic frustum
-        camera2D.left   *= factor;
-        camera2D.right  *= factor;
-        camera2D.top    *= factor;
-        camera2D.bottom *= factor;
-        camera2D.updateProjectionMatrix();
+        state.camera2D.left   *= factor;
+        state.camera2D.right  *= factor;
+        state.camera2D.top    *= factor;
+        state.camera2D.bottom *= factor;
+        state.camera2D.updateProjectionMatrix();
       } else {
         state.zoom2D = Math.max(0.002, Math.min(50, state.zoom2D * factor));
         update2DCamera();
@@ -445,7 +437,7 @@
 
     // Build flat list of all meshes mapped back to their surface
 
-    renderer.domElement.addEventListener('pointermove', e => {
+    state.renderer.domElement.addEventListener('pointermove', e => {
       if (state.currentMode !== '3d' || !state.importedModel || state.pan2DActive) return;
       getPointerNDC(e);
       raycaster.setFromCamera(pointerNDC, camera3D);
@@ -459,7 +451,7 @@
       }
     });
 
-    renderer.domElement.addEventListener('click', e => {
+    state.renderer.domElement.addEventListener('click', e => {
       if (placementMode && placementMode !== 'idle') return; // placement engine handles this
       if (state.currentMode !== '3d' || !state.importedModel) return;
       getPointerNDC(e);
@@ -623,18 +615,18 @@
 
       updateSceneHelpers(siteSpan);
 
-      // Centre camera on geocoded origin (0,0,0) when opts.originLng is set,
+      // Centre state.camera on geocoded origin (0,0,0) when opts.originLng is set,
       // so the address point is always in the middle of the view.
       if (opts.originLng != null) {
         const aspect = container.clientWidth / (container.clientHeight || 1);
         const halfH  = Math.max(siteSpan * 0.8, 100);
         state.base2DhalfH  = halfH;
-        camera2D.left   = -halfH * aspect;
-        camera2D.right  =  halfH * aspect;
-        camera2D.top    =  halfH;
-        camera2D.bottom = -halfH;
-        pan2D.x = 0;
-        pan2D.z = 0;
+        state.camera2D.left   = -halfH * aspect;
+        state.camera2D.right  =  halfH * aspect;
+        state.camera2D.top    =  halfH;
+        state.camera2D.bottom = -halfH;
+        state.pan2D.x = 0;
+        state.pan2D.z = 0;
         state.zoom2D  = 1;
         update2DCamera();
       } else {
@@ -664,9 +656,9 @@
       requestAnimationFrame(() => requestAnimationFrame(() => {
         const w = container.clientWidth  || 1;
         const h = container.clientHeight || 1;
-        renderer.setSize(w, h, false);
-        camera3D.aspect = w / h;
-        camera3D.updateProjectionMatrix();
+        state.renderer.setSize(w, h, false);
+        state.camera3D.aspect = w / h;
+        state.camera3D.updateProjectionMatrix();
         if (state.siteBoundaryLine && opts.originLng == null) {
           fit2DCamera(new THREE.Box3().setFromObject(state.siteBoundaryLine));
         }
@@ -693,7 +685,7 @@
     /* ============================================================
        MODE SWITCHING
     ============================================================ */
-    // Wire state.surfaces.js callbacks now that the functions are defined
+    // Wire surfaces.js callbacks now that the functions are defined
     initSurfaces({
       fitSurfaceCamera,
       drawSurfaceCanvasOutline,
@@ -708,8 +700,8 @@
           // Reset current view to default
           if (mode === '2d') {
             state.rotate2D = 0;
-            pan2D.x  = 0;
-            pan2D.z  = 0;
+            state.pan2D.x  = 0;
+            state.pan2D.z  = 0;
             state.zoom2D   = 1;
             const target = state.siteBoundaryLine || state.importedModel;
             if (target) {
@@ -718,19 +710,19 @@
               // No site loaded — reset frustum to default 100-unit view
               const aspect = container.clientWidth / (container.clientHeight || 1);
               const halfH  = 50;
-              camera2D.left   = -halfH * aspect;
-              camera2D.right  =  halfH * aspect;
-              camera2D.top    =  halfH;
-              camera2D.bottom = -halfH;
+              state.camera2D.left   = -halfH * aspect;
+              state.camera2D.right  =  halfH * aspect;
+              state.camera2D.top    =  halfH;
+              state.camera2D.bottom = -halfH;
               state.base2DhalfH     =  halfH;
-              camera2D.updateProjectionMatrix();
+              state.camera2D.updateProjectionMatrix();
             }
             update2DCamera();
             showFeedback('2D view reset');
           } else {
             const target = state.importedModel || state.siteBoundaryLine;
             if (target) fit3DCamera(new THREE.Box3().setFromObject(target));
-            else { camera3D.position.set(100, 100, 100); controls3D.target.set(0,0,0); controls3D.update(); }
+            else { state.camera3D.position.set(100, 100, 100); state.controls3D.target.set(0,0,0); state.controls3D.update(); }
             showFeedback('3D view reset');
           }
         } else {
@@ -785,7 +777,7 @@
       updateNorthRotation();
 
       // ── CAD Universe orientation ──────────────────────────────────────────
-      // The CAD grid (gridHelper) is FIXED at True North. It never rotates.
+      // The CAD grid (state.gridHelper) is FIXED at True North. It never rotates.
       // The axes helper rotates with Design North as a visual orientation aid.
       // The DXF model, site boundary, and all imported geometry never rotate.
       //
@@ -795,18 +787,18 @@
       const _dnRad = (_dn ?? 0) * Math.PI / 180;
 
       // Axes: rotate with Design North (shows the design coordinate system)
-      if (axesHelper) axesHelper.rotation.y = -_dnRad;
+      if (state.axesHelper) state.axesHelper.rotation.y = -_dnRad;
 
       // Design Grid: rotate group to match Design North (cheap matrix op, no geometry rebuild)
-      if (designGridManager) designGridManager.setHorizontalRotation(-_dnRad);
+      if (designGridManager) state.designGridManager.setHorizontalRotation(-_dnRad);
 
       // Switch between CAD grid and Design Grid based on whether Design North is set
       updateGridVisibility();
 
-      renderer.render(scene, camera);
+      state.renderer.render(scene, state.camera);
       updateSitePinDOM();
       if (state.currentMode === '3d' && isGizmo3DVisible()) {
-        renderer._compassMainScene = scene; // expose for renderCompassGizmo
+        state.renderer._compassMainScene = scene; // expose for renderCompassGizmo
         renderCompassGizmo();
       }
       requestAnimationFrame(animate);
@@ -963,7 +955,7 @@
           const size = new THREE.Vector3();
           new THREE.Box3().setFromObject(state.cadmapperGroup).getSize(size);
           updateSceneHelpers(Math.max(size.x, size.z));
-          designGridManager.initHorizontal(
+          state.designGridManager.initHorizontal(
             design?.grid_spacing_m ?? 100, design?.minor_divisions ?? 0,
             5000, new THREE.Vector3(0, 0, 0)
           );
@@ -997,20 +989,20 @@
 
     document.getElementById('resetCameraBtn').addEventListener('click', () => {
       if (state.currentMode === '2d') {
-        pan2D.x = 0; pan2D.z = 0; state.zoom2D = 1;
+        state.pan2D.x = 0; state.pan2D.z = 0; state.zoom2D = 1;
         update2DCamera();
       } else {
-        camera3D.position.set(100, 100, 100);
-        camera3D.lookAt(0, 0, 0);
-        controls3D.target.set(0, 0, 0);
-        controls3D.update();
+        state.camera3D.position.set(100, 100, 100);
+        state.camera3D.lookAt(0, 0, 0);
+        state.controls3D.target.set(0, 0, 0);
+        state.controls3D.update();
       }
       showFeedback('Camera reset');
     });
 
     document.getElementById('toggleGridBtn').addEventListener('click', () => {
-      if (gridHelper) {
-        const next = !gridHelper.visible;
+      if (state.gridHelper) {
+        const next = !state.gridHelper.visible;
         setGridVisible(next);
         showFeedback('Grid ' + (next ? 'on' : 'off'));
       }
@@ -1020,7 +1012,7 @@
        PLACEHOLDER BUTTONS
     ============================================================ */
     document.getElementById('mapOverlayToggle')?.addEventListener('change', e => {
-      if (mapTileGroup) mapTileGroup.visible = e.target.checked;
+      if (state.mapTileGroup) state.mapTileGroup.visible = e.target.checked;
     });
 
     document.getElementById('componentLibraryBtn')?.addEventListener('click', () => showFeedback('Component Library \u2014 coming soon'));
@@ -1180,7 +1172,7 @@
     let circlePhase = 'none'; // 'none' | 'centre_set'
     let circleCentre = null; // { u, v } surface-local
 
-    renderer.domElement.addEventListener('click', e => {
+    state.renderer.domElement.addEventListener('click', e => {
       if (state.currentMode !== '2d' || !state.selectedSurface) return;
       if (placementMode === 'idle') return;
 
@@ -1207,7 +1199,7 @@
           placingSpecies = null;
           placementMode  = 'idle';
           clearPreview();
-          renderer.domElement.style.cursor = '';
+          state.renderer.domElement.style.cursor = '';
           showFeedback(`${inst.placement ? 'Placed' : 'Added'} plant — canopy ${area} m²`);
         }
         return;
@@ -1220,7 +1212,7 @@
       }
     });
 
-    renderer.domElement.addEventListener('dblclick', e => {
+    state.renderer.domElement.addEventListener('dblclick', e => {
       if (state.currentMode !== '2d' || placementMode !== 'placing_polygon') return;
       if (placingPoly.length < 3) {
         showFeedback('Need at least 3 points to close a polygon'); return;
@@ -1230,10 +1222,10 @@
       placingSpecies = null;
       placementMode  = 'idle';
       clearPreview();
-      renderer.domElement.style.cursor = '';
+      state.renderer.domElement.style.cursor = '';
     });
 
-    renderer.domElement.addEventListener('mousemove', e => {
+    state.renderer.domElement.addEventListener('mousemove', e => {
       if (state.currentMode !== '2d' || !state.selectedSurface) return;
       const ndc = canvasNDC(e);
       const wPt = raycastSurface(ndc, state.selectedSurface);
@@ -1261,7 +1253,7 @@
           placingSpecies = null;
           placementMode  = 'idle';
           clearPreview();
-          renderer.domElement.style.cursor = '';
+          state.renderer.domElement.style.cursor = '';
         } else {
           showFeedback('Need at least 3 points');
         }
@@ -1396,7 +1388,7 @@
     /* ============================================================
        NORTH POINT 2D + 3D — initialise modules
     ============================================================ */
-    initNorthPoint2D(() => ({ currentMode: state.currentMode, camera2D, camera3D, controls3D, pan2D: state.pan2D, rotate2D: state.rotate2D }));
+    initNorthPoint2D(() => ({ currentMode: state.currentMode, camera2D, camera3D, state.controls3D, state.pan2D: state.pan2D, rotate2D: state.rotate2D }));
     initNorthPoint3D(() => ({ renderer, camera3D, container, currentMode: state.currentMode, showFeedback }));
 
     // Site selection + CADMapper import modules
@@ -1471,11 +1463,11 @@
         const cellSize = manualGridSpacing
           ? manualGridSpacing
           : (rawCell < 50 ? 50 : rawCell < 100 ? 100 : rawCell < 250 ? 250 : 500);
-        if (dgSpacing === null) dgSpacing = cellSize;
-        if (dgMinorDivisions === null) dgMinorDivisions = 0;
+        if (state.dgSpacing === null) state.dgSpacing = cellSize;
+        if (state.dgMinorDivisions === null) state.dgMinorDivisions = 0;
 
-        designGridManager.initHorizontal(
-          dgSpacing, dgMinorDivisions, 5000, new THREE.Vector3(0, 0, 0)
+        state.designGridManager.initHorizontal(
+          state.dgSpacing, state.dgMinorDivisions, 5000, new THREE.Vector3(0, 0, 0)
         );
 
         fit3DCamera(new THREE.Box3().setFromObject(state.cadmapperGroup));

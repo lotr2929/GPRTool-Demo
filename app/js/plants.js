@@ -348,7 +348,7 @@ export function getSurfaceCentre(surface) {
 
 export function raycastSurface(ndc, surface) {
   const r = new THREE.Raycaster();
-  r.setFromCamera(ndc, camera2D);
+  r.setFromCamera(ndc, state.camera2D);
   const hits = r.intersectObject(surface.mesh, false);
   return hits.length ? hits[0].point : null;
 }
@@ -387,7 +387,7 @@ export function surfaceUVToWorld(u, v, surface) {
 }
 
 export function canvasNDC(e) {
-  const rect = renderer.domElement.getBoundingClientRect();
+  const rect = state.renderer.domElement.getBoundingClientRect();
   return new THREE.Vector2(
      ((e.clientX - rect.left) / rect.width)  * 2 - 1,
     -((e.clientY - rect.top)  / rect.height) * 2 + 1
@@ -409,7 +409,7 @@ export function startPlacement(species) {
     ? 'Click to set centre, drag or click again to set radius'
     : 'Click to add vertices, double-click or Enter to close polygon';
   showFeedback(`Placing ${species.common} — ${hint}`, 0);
-  renderer.domElement.style.cursor = 'crosshair';
+  state.renderer.domElement.style.cursor = 'crosshair';
 }
 
 export function cancelPlacement() {
@@ -419,7 +419,7 @@ export function cancelPlacement() {
   placingPoly     = [];
   editingInstance = null;
   clearPreview();
-  renderer.domElement.style.cursor = '';
+  state.renderer.domElement.style.cursor = '';
   showFeedback('Ready');
 }
 

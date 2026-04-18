@@ -100,10 +100,10 @@ export function buildBoundaryPanel(wgs84Bounds, hasExisting = false) {
 }
 
 export function clearLotBoundary() {
-  if (lotBoundaryGroup) {
-    scene.remove(lotBoundaryGroup);
-    lotBoundaryGroup.traverse(c => { c.geometry?.dispose(); c.material?.dispose(); });
-    lotBoundaryGroup = null;
+  if (state.lotBoundaryGroup) {
+    scene.remove(state.lotBoundaryGroup);
+    state.lotBoundaryGroup.traverse(c => { c.geometry?.dispose(); c.material?.dispose(); });
+    state.lotBoundaryGroup = null;
   }
   document.getElementById('lot-boundary-layer-row')?.remove();
 }
@@ -123,10 +123,10 @@ export function renderLotBoundary(boundaryGeojson) {
 
   const geom = new THREE.BufferGeometry().setFromPoints(pts);
   const mat  = new THREE.LineBasicMaterial({ color: 0xff6600, linewidth: 2 });
-  lotBoundaryGroup = new THREE.Group();
-  lotBoundaryGroup.name = 'lot-boundary';
-  lotBoundaryGroup.add(new THREE.Line(geom, mat));
-  scene.add(lotBoundaryGroup);
+  state.lotBoundaryGroup = new THREE.Group();
+  state.lotBoundaryGroup.name = 'lot-boundary';
+  state.lotBoundaryGroup.add(new THREE.Line(geom, mat));
+  scene.add(state.lotBoundaryGroup);
 
   // Add to Properties panel under Site Context
   buildLotBoundaryLayerRow();
@@ -147,7 +147,7 @@ export function buildLotBoundaryLayerRow() {
   const cb = document.createElement('input');
   cb.type = 'checkbox'; cb.checked = true;
   cb.style.cssText = 'accent-color:var(--accent-mid,#4a8a4a);';
-  cb.addEventListener('change', () => { if (lotBoundaryGroup) lotBoundaryGroup.visible = cb.checked; });
+  cb.addEventListener('change', () => { if (state.lotBoundaryGroup) state.lotBoundaryGroup.visible = cb.checked; });
   const dot = document.createElement('span');
   dot.style.cssText = 'width:8px;height:8px;border-radius:50%;flex-shrink:0;background:#ff6600;';
   const name = document.createElement('span');
@@ -202,7 +202,7 @@ export function showSitePin(lat, lng) {
 
 export function updateSitePinDOM() {
   if (!state.sitePinDom || !state.sitePinWorldPos) return;
-  const vec  = state.sitePinWorldPos.clone().project(camera);
+  const vec  = state.sitePinWorldPos.clone().project(state.camera);
   const rect = canvas.getBoundingClientRect();
   const x    = (vec.x *  0.5 + 0.5) * rect.width;
   const y    = (vec.y * -0.5 + 0.5) * rect.height;
