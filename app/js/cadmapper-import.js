@@ -327,7 +327,7 @@ async function runImport() {
 }
 
 // ── DXF parser ─────────────────────────────────────────────────────────────
-function parseCadmapperDXF(text, selectedLayers, THREE) {
+export function parseCadmapperDXF(text, selectedLayers, THREE) {
   const lines = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n');
   const pairs = [];
   for (let i = 0; i + 1 < lines.length; i += 2) {

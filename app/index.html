@@ -238,7 +238,7 @@
     import { initSiteBoundary, openBoundaryPicker } from './js/site-boundary.js';
     // ── DESIGN WORLD (grids, north angle) — never mixes with Real World ────────
     import { initSiteSelection }    from './js/site-selection.js';
-    import { initCADMapperImport, buildLayerPanel } from './js/cadmapper-import.js';
+    import { initCADMapperImport, buildLayerPanel, parseCadmapperDXF } from './js/cadmapper-import.js';
     import { DesignGridManager }    from './js/design-grid.js';
     import {
       initNorthPoint2D,
@@ -406,6 +406,8 @@
     let dgMinorDivisions     = null;   // sub-divisions; null = none
     let axesYLine        = null;  // Y (green) — shown in 3D only
     let feedbackTimer    = null;
+    // ── Lot boundary (REAL WORLD — WGS84 GeoJSON → Three.js line) ────────────
+    let lotBoundaryGroup = null;   // THREE.Group of boundary lines in scene
 
     // Surface registry — populated after model load
     // Each entry: { id, mesh, type, area, elevation, normalAngle, originalMaterial }
@@ -2294,7 +2296,7 @@
     /* ============================================================
        LOT BOUNDARY PANEL — appears in right panel after DXF import
     ============================================================ */
-    function buildBoundaryPanel(wgs84Bounds) {
+    function buildBoundaryPanel(wgs84Bounds, hasExisting = false) {
       const existing = document.getElementById('boundary-section');
       if (existing) existing.remove();
 
@@ -2316,10 +2318,10 @@
 
       const btn = document.createElement('button');
       btn.id = 'draw-boundary-btn';
-      btn.textContent = 'Draw Lot Boundary\u2026';
+      btn.textContent = hasExisting ? '\u2713 Lot Boundary \u2014 Re-draw\u2026' : 'Draw Lot Boundary\u2026';
       btn.style.cssText = `
         width:100%; padding:7px 12px; font-size:12px; cursor:pointer;
-        background:var(--accent-mid,#4a8a4a); color:#fff; border:none;
+        background:${hasExisting ? 'var(--accent-dark,#2d6b2d)' : 'var(--accent-mid,#4a8a4a)'}; color:#fff; border:none;
         border-radius:4px; text-align:left;`;
       btn.addEventListener('click', () => {
         if (!wgs84Bounds) {
@@ -2329,7 +2331,8 @@
         openBoundaryPicker(wgs84Bounds, async (geojson) => {
           try {
             await addBoundaryToGPR(geojson);
-            btn.textContent = '\u2713 Lot Boundary saved';
+            renderLotBoundary(geojson);
+            btn.textContent = '\u2713 Lot Boundary saved \u2014 Re-draw\u2026';
             btn.style.background = 'var(--accent-dark,#2d6b2d)';
             showFeedback('Lot boundary saved to project');
           } catch (err) {
@@ -2414,7 +2417,159 @@
       document.getElementById('section-surfaces').style.display      = 'none';
       document.getElementById('surfaces-list').innerHTML              = '';
       document.getElementById('gpr-value').textContent               = '\u2014';
+      document.getElementById('boundary-section')?.remove();
+      clearLotBoundary();
       showFeedback('Site cleared');
+    });
+
+    /* ============================================================
+       LOT BOUNDARY — REAL WORLD scene rendering
+       Converts WGS84 GeoJSON polygon → Three.js line in scene space
+    ============================================================ */
+    function clearLotBoundary() {
+      if (lotBoundaryGroup) {
+        scene.remove(lotBoundaryGroup);
+        lotBoundaryGroup.traverse(c => { c.geometry?.dispose(); c.material?.dispose(); });
+        lotBoundaryGroup = null;
+      }
+      document.getElementById('lot-boundary-layer-row')?.remove();
+    }
+
+    function renderLotBoundary(boundaryGeojson) {
+      clearLotBoundary();
+      if (!boundaryGeojson?.geometry?.coordinates?.[0]) return;
+
+      const ring   = boundaryGeojson.geometry.coordinates[0];
+      const pts    = ring.map(([lng, lat]) => {
+        const sc = wgs84ToScene(lat, lng);
+        return sc ? new THREE.Vector3(sc.x, 0.15, sc.z) : null;
+      }).filter(Boolean);
+
+      if (pts.length < 3) return;
+      pts.push(pts[0]);   // close the ring
+
+      const geom = new THREE.BufferGeometry().setFromPoints(pts);
+      const mat  = new THREE.LineBasicMaterial({ color: 0xff6600, linewidth: 2 });
+      lotBoundaryGroup = new THREE.Group();
+      lotBoundaryGroup.name = 'lot-boundary';
+      lotBoundaryGroup.add(new THREE.Line(geom, mat));
+      scene.add(lotBoundaryGroup);
+
+      // Add to Properties panel under Site Context
+      buildLotBoundaryLayerRow();
+    }
+
+    function buildLotBoundaryLayerRow() {
+      const existing = document.getElementById('lot-boundary-layer-row');
+      if (existing) existing.remove();
+
+      const section = document.getElementById('cadmapper-layer-section');
+      if (!section) return;
+
+      const row = document.createElement('div');
+      row.id        = 'lot-boundary-layer-row';
+      row.className = 'info-row';
+      const label = document.createElement('label');
+      label.style.cssText = 'display:flex;align-items:center;gap:8px;cursor:pointer;width:100%;';
+      const cb = document.createElement('input');
+      cb.type = 'checkbox'; cb.checked = true;
+      cb.style.cssText = 'accent-color:var(--accent-mid,#4a8a4a);';
+      cb.addEventListener('change', () => { if (lotBoundaryGroup) lotBoundaryGroup.visible = cb.checked; });
+      const dot = document.createElement('span');
+      dot.style.cssText = 'width:8px;height:8px;border-radius:50%;flex-shrink:0;background:#ff6600;';
+      const name = document.createElement('span');
+      name.style.cssText = 'flex:1;font-size:12px;'; name.textContent = 'Google Lot Boundary';
+      label.append(cb, dot, name);
+      row.appendChild(label);
+      section.appendChild(row);
+    }
+
+    /* ============================================================
+       OPEN GPR FILE
+    ============================================================ */
+    document.getElementById('openGPRBtn').addEventListener('click', () => {
+      document.getElementById('openGPRInput').click();
+    });
+
+    document.getElementById('openGPRInput').addEventListener('change', async (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      e.target.value = '';
+      showFeedback('Opening GPR file\u2026', 0);
+
+      try {
+        const { manifest, reference, design, boundary, hasDXF, zip } = await openGPR(file);
+
+        // ── REAL WORLD: restore anchor and scene offset from reference.json ──
+        setRealWorldAnchor(reference.utm_zone, reference.utm_easting, reference.utm_northing);
+        setSceneOffset(reference.scene_offset_x ?? 0, reference.scene_offset_z ?? 0);
+
+        // ── Re-parse embedded DXF if present ──────────────────────────────
+        if (hasDXF) {
+          const dxfEntry = zip.file('context/cadmapper.dxf');
+          const dxfBytes = await dxfEntry.async('arraybuffer');
+          const dxfFile  = new File([dxfBytes], 'cadmapper.dxf');
+          const dxfText  = await dxfFile.text();
+
+          // Use all layers
+          const allLayers = new Set([
+            'topography','buildings','highways','major_roads',
+            'minor_roads','paths','parks','water','railways','contours'
+          ]);
+          const layerGroups = parseCadmapperDXF(dxfText, allLayers, THREE);
+
+          if (layerGroups && Object.keys(layerGroups).length) {
+            // Clear existing
+            if (cadmapperGroup) {
+              scene.remove(cadmapperGroup);
+              cadmapperGroup.traverse(c => { c.geometry?.dispose(); c.material?.dispose(); });
+              cadmapperGroup = null;
+            }
+            cadmapperGroup = new THREE.Group();
+            cadmapperGroup.name = 'cadmapper-context';
+            Object.values(layerGroups).forEach(g => cadmapperGroup.add(g));
+
+            // Apply stored scene offset (children already centred in the saved DXF)
+            scene.add(cadmapperGroup);
+            const size = new THREE.Vector3();
+            new THREE.Box3().setFromObject(cadmapperGroup).getSize(size);
+            const siteSpan = Math.max(size.x, size.z);
+            updateSceneHelpers(siteSpan);
+
+            designGridManager.initHorizontal(
+              design?.grid_spacing_m  ?? 100,
+              design?.minor_divisions ?? 0,
+              5000,
+              new THREE.Vector3(0, 0, 0)
+            );
+
+            fit3DCamera(new THREE.Box3().setFromObject(cadmapperGroup));
+            switchMode('3d');
+
+            document.getElementById('empty-props').style.display  = 'none';
+            document.getElementById('clearSiteBtn').style.display = 'block';
+            document.getElementById('left-panel').classList.add('site-imported');
+            buildLayerPanel(layerGroups);
+          }
+        }
+
+        // ── Render lot boundary if present ────────────────────────────────
+        if (boundary) {
+          renderLotBoundary(boundary);
+        }
+
+        // ── Show boundary panel (draw or re-draw) ─────────────────────────
+        const wgs84Bounds = hasRealWorldAnchor() ? {
+          sw: sceneToWGS84(-reference.site_span_m / 2, -reference.site_span_m / 2),
+          ne: sceneToWGS84( reference.site_span_m / 2,  reference.site_span_m / 2),
+        } : null;
+        buildBoundaryPanel(wgs84Bounds, !!boundary);
+
+        showFeedback(`Opened: ${manifest.site_name ?? file.name}`);
+      } catch (err) {
+        console.error('[GPR open]', err);
+        showFeedback('Failed to open GPR file: ' + err.message);
+      }
     });
 
     /* ============================================================
