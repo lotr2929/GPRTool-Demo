@@ -34,6 +34,9 @@
       isGizmo3DVisible,
     } from './north-point-3d.js';
     import { state } from './state.js';
+    import { detectSurfaces, populateSurfacePanel, selectSurface, deselectSurface,
+             hoverSurface, unhoverSurface, allSurfaceMeshes, getPointerNDC,
+             classifyNormal, computeMeshArea, initSurfaces } from './surfaces.js';
     import { loadOBJ, loadGLTF, loadIFC, addEdgeOverlay, detectAndApplyUnitScale } from './model.js';
     import { updateSceneHelpers, showGridSpacingPopup, majorCellSize } from './grid.js';
     import { initGeo, latlonToMetres, extractCoordinates, computeBBox, computePolygonArea, computePolygonPerimeter, loadMapTiles, clearMapTiles } from './geo.js';
@@ -49,6 +52,7 @@
     document.getElementById('body-container').innerHTML = bodyHTML;
     initUI();
     initGeo({ onMapCleared: () => setGridVisible(state.currentMode === '2d') });
+    // initSurfaces wired after fitSurfaceCamera etc. are defined (below)
 
     /* ── ui.js handles: clock, alarm, showFeedback, section collapse ─── */
 
@@ -133,7 +137,10 @@
       hover:    new THREE.MeshBasicMaterial({ color: 0xd8d8d8, side: THREE.DoubleSide }),
       selected: new THREE.MeshBasicMaterial({ color: 0xc8e8c8, side: THREE.DoubleSide }),
     };
+    state.MAT = MAT; // bridge for surfaces.js
 
+    // ── Bridge MAT to state for surfaces.js ─────────────────────────────
+    // (MAT is assigned below after it is created)
     /* ============================================================
        RENDERER
     ============================================================ */
@@ -431,82 +438,10 @@
     /* ============================================================
        SURFACE DETECTION
     ============================================================ */
-    function classifyNormal(normal) {
-      const y = Math.abs(normal.y);
-      if (normal.y < -0.5) return 'underside';
-      if (normal.y >  0.7) return 'horizontal';
-      if (y          < 0.3) return 'wall';
-      return 'sloped';
-    }
 
     // ── True mesh area: sum of all triangle areas via cross product ──
-    function computeMeshArea(mesh) {
-      const geo    = mesh.geometry;
-      const posAttr = geo.attributes.position;
-      const idxAttr = geo.index;
-      const mat    = mesh.matrixWorld;
-      const pA = new THREE.Vector3();
-      const pB = new THREE.Vector3();
-      const pC = new THREE.Vector3();
-      const e1 = new THREE.Vector3();
-      const e2 = new THREE.Vector3();
-      const cr = new THREE.Vector3();
-      let area = 0;
-      const triCount = idxAttr ? idxAttr.count / 3 : posAttr.count / 3;
-      for (let i = 0; i < triCount; i++) {
-        let iA, iB, iC;
-        if (idxAttr) {
-          iA = idxAttr.getX(i * 3);
-          iB = idxAttr.getX(i * 3 + 1);
-          iC = idxAttr.getX(i * 3 + 2);
-        } else {
-          iA = i * 3; iB = i * 3 + 1; iC = i * 3 + 2;
-        }
-        pA.fromBufferAttribute(posAttr, iA).applyMatrix4(mat);
-        pB.fromBufferAttribute(posAttr, iB).applyMatrix4(mat);
-        pC.fromBufferAttribute(posAttr, iC).applyMatrix4(mat);
-        e1.subVectors(pB, pA);
-        e2.subVectors(pC, pA);
-        cr.crossVectors(e1, e2);
-        area += cr.length() * 0.5;
-      }
-      return area;
-    }
 
     // ── Dominant normal from all triangles (area-weighted average) ──
-    function computeDominantNormal(mesh) {
-      const geo     = mesh.geometry;
-      const posAttr = geo.attributes.position;
-      const idxAttr = geo.index;
-      const mat     = mesh.matrixWorld;
-      const pA = new THREE.Vector3();
-      const pB = new THREE.Vector3();
-      const pC = new THREE.Vector3();
-      const e1 = new THREE.Vector3();
-      const e2 = new THREE.Vector3();
-      const cr = new THREE.Vector3();
-      const acc = new THREE.Vector3();
-      const triCount = idxAttr ? idxAttr.count / 3 : posAttr.count / 3;
-      for (let i = 0; i < triCount; i++) {
-        let iA, iB, iC;
-        if (idxAttr) {
-          iA = idxAttr.getX(i * 3);
-          iB = idxAttr.getX(i * 3 + 1);
-          iC = idxAttr.getX(i * 3 + 2);
-        } else {
-          iA = i * 3; iB = i * 3 + 1; iC = i * 3 + 2;
-        }
-        pA.fromBufferAttribute(posAttr, iA).applyMatrix4(mat);
-        pB.fromBufferAttribute(posAttr, iB).applyMatrix4(mat);
-        pC.fromBufferAttribute(posAttr, iC).applyMatrix4(mat);
-        e1.subVectors(pB, pA);
-        e2.subVectors(pC, pA);
-        cr.crossVectors(e1, e2); // length = 2 × area = natural weight
-        acc.add(cr);
-      }
-      if (acc.length() < 1e-10) return new THREE.Vector3(0, 1, 0);
-      return acc.normalize();
-    }
 
     // ── Coplanar polygon reconstruction ────────────────────────────
     // Extracts all triangles from the entire model group in world space,
@@ -517,366 +452,24 @@
     // Adjacency: two triangles are adjacent if they share a world-space edge
     //            (vertex coordinates rounded to SNAP_MM precision)
 
-    const PLANE_NORMAL_DP = 2;   // decimal places for normal quantisation
-    const PLANE_DIST_DP   = 2;   // decimal places for plane-distance quantisation
-    const SNAP            = 1e-3; // 1mm vertex snap tolerance for edge matching
 
-    function vKey(v) {
-      // Round to nearest SNAP to handle floating point noise from matrix transforms
-      const s = 1 / SNAP;
-      return `${Math.round(v.x * s)},${Math.round(v.y * s)},${Math.round(v.z * s)}`;
-    }
 
-    function extractAllTriangles(modelGroup) {
-      // Returns array of { normal:Vector3, d:number, va:Vector3, vb:Vector3, vc:Vector3 }
-      // all in world space, normals pointing outward (y >= 0 preferred)
-      const tris = [];
-      const pA = new THREE.Vector3(), pB = new THREE.Vector3(), pC = new THREE.Vector3();
-      const e1  = new THREE.Vector3(), e2  = new THREE.Vector3();
 
-      modelGroup.traverse(child => {
-        if (!child.isMesh) return;
-        child.updateMatrixWorld(true);
-        const pos = child.geometry.attributes.position;
-        const idx = child.geometry.index;
-        if (!pos) return;
 
-        const triCount = idx ? idx.count / 3 : pos.count / 3;
-        for (let i = 0; i < triCount; i++) {
-          let iA, iB, iC;
-          if (idx) { iA = idx.getX(i*3); iB = idx.getX(i*3+1); iC = idx.getX(i*3+2); }
-          else     { iA = i*3;           iB = i*3+1;             iC = i*3+2; }
 
-          pA.fromBufferAttribute(pos, iA).applyMatrix4(child.matrixWorld);
-          pB.fromBufferAttribute(pos, iB).applyMatrix4(child.matrixWorld);
-          pC.fromBufferAttribute(pos, iC).applyMatrix4(child.matrixWorld);
-
-          e1.subVectors(pB, pA); e2.subVectors(pC, pA);
-          const cr = new THREE.Vector3().crossVectors(e1, e2);
-          if (cr.length() < 1e-12) continue; // degenerate
-
-          const n = cr.clone().normalize();
-          // Prefer normals pointing upward (y > 0) for consistent keying
-          if (n.y < -0.1) n.negate();
-
-          // Skip undersides
-          if (n.y < -0.5) continue;
-
-          const d = n.dot(pA); // plane equation: n·x = d
-
-          tris.push({
-            normal: n,
-            d,
-            va: pA.clone(), vb: pB.clone(), vc: pC.clone(),
-          });
-        }
-      });
-      return tris;
-    }
-
-    function buildCoplanarPatches(tris) {
-      // ─ 1. Bucket triangles by plane key ────────────────────────────
-      const planeBuckets = new Map();
-      for (const t of tris) {
-        const nx = t.normal.x.toFixed(PLANE_NORMAL_DP);
-        const ny = t.normal.y.toFixed(PLANE_NORMAL_DP);
-        const nz = t.normal.z.toFixed(PLANE_NORMAL_DP);
-        const d  = t.d.toFixed(PLANE_DIST_DP);
-        const key = `${nx},${ny},${nz},${d}`;
-        if (!planeBuckets.has(key)) planeBuckets.set(key, { normal: t.normal.clone(), d: t.d, tris: [] });
-        planeBuckets.get(key).tris.push(t);
-      }
-
-      // ─ 2. Within each plane bucket, find connected components ───────
-      //      by shared edges (vertex key pairs)
-      const patches = [];
-
-      for (const { normal, d, tris: planeTris } of planeBuckets.values()) {
-        // Build edge → triangle index map
-        const edgeToTris = new Map();
-        for (let i = 0; i < planeTris.length; i++) {
-          const t = planeTris[i];
-          for (const [va, vb] of [[t.va,t.vb],[t.vb,t.vc],[t.vc,t.va]]) {
-            const ka = vKey(va), kb = vKey(vb);
-            const ek = ka < kb ? `${ka}|${kb}` : `${kb}|${ka}`;
-            if (!edgeToTris.has(ek)) edgeToTris.set(ek, []);
-            edgeToTris.get(ek).push(i);
-          }
-        }
-
-        // BFS flood-fill to find connected components
-        const visited = new Uint8Array(planeTris.length);
-        for (let start = 0; start < planeTris.length; start++) {
-          if (visited[start]) continue;
-          const group = [];
-          const queue = [start];
-          visited[start] = 1;
-          while (queue.length) {
-            const cur = queue.shift();
-            group.push(planeTris[cur]);
-            const t = planeTris[cur];
-            for (const [va, vb] of [[t.va,t.vb],[t.vb,t.vc],[t.vc,t.va]]) {
-              const ka = vKey(va), kb = vKey(vb);
-              const ek = ka < kb ? `${ka}|${kb}` : `${kb}|${ka}`;
-              for (const nb of (edgeToTris.get(ek) || [])) {
-                if (!visited[nb]) { visited[nb] = 1; queue.push(nb); }
-              }
-            }
-          }
-          patches.push({ normal: normal.clone(), d, tris: group });
-        }
-      }
-      return patches;
-    }
-
-    function patchArea(tris) {
-      let area = 0;
-      const e1 = new THREE.Vector3(), e2 = new THREE.Vector3(), cr = new THREE.Vector3();
-      for (const t of tris) {
-        e1.subVectors(t.vb, t.va); e2.subVectors(t.vc, t.va);
-        cr.crossVectors(e1, e2);
-        area += cr.length() * 0.5;
-      }
-      return area;
-    }
-
-    function detectSurfaces(modelGroup) {
-      surfaces = [];
-      let idCounter = 0;
-
-      // ─ Step 1: extract all triangles in world space ─────────────────
-      const allTris = extractAllTriangles(modelGroup);
-
-      // ─ Step 2: group into coplanar connected patches ─────────────────
-      const patches = buildCoplanarPatches(allTris);
-
-      // ─ Step 3: classify each patch and build surface registry ────────
-      // We need to associate patches back to the original meshes for
-      // raycasting. Build a vertex → mesh map for this.
-      const vertexMeshMap = new Map();
-      modelGroup.traverse(child => {
-        if (!child.isMesh) return;
-        const pos = child.geometry.attributes.position;
-        const idx = child.geometry.index;
-        if (!pos) return;
-        const total = idx ? idx.count : pos.count;
-        const p = new THREE.Vector3();
-        for (let i = 0; i < total; i++) {
-          const vi = idx ? idx.getX(i) : i;
-          p.fromBufferAttribute(pos, vi).applyMatrix4(child.matrixWorld);
-          vertexMeshMap.set(vKey(p), child);
-        }
-      });
-
-      for (const patch of patches) {
-        const area = patchArea(patch.tris);
-        if (area < 0.01) continue; // skip tiny / degenerate
-
-        const normal = patch.normal;
-        const classification = classifyNormal(normal);
-        if (classification === 'underside') continue;
-
-        // Elevation = minimum Y across all triangle vertices
-        let minY = Infinity;
-        for (const t of patch.tris) {
-          minY = Math.min(minY, t.va.y, t.vb.y, t.vc.y);
-        }
-        const elevation = Math.round(minY * 100) / 100;
-
-        let type;
-        if (classification === 'horizontal') {
-          type = elevation < 0.5 ? 'ground' : 'roof';
-        } else if (classification === 'wall') {
-          type = 'wall';
-        } else {
-          type = 'sloped';
-        }
-
-        const normalAngle = Math.round(
-          THREE.MathUtils.radToDeg(Math.acos(Math.min(1, Math.abs(normal.y))))
-        );
-
-        // Find the primary mesh (the one that owns most of this patch's vertices)
-        const meshCount = new Map();
-        for (const t of patch.tris) {
-          for (const v of [t.va, t.vb, t.vc]) {
-            const m = vertexMeshMap.get(vKey(v));
-            if (m) meshCount.set(m, (meshCount.get(m) || 0) + 1);
-          }
-        }
-        let primaryMesh = null, maxCount = 0;
-        for (const [m, c] of meshCount) {
-          if (c > maxCount) { maxCount = c; primaryMesh = m; }
-        }
-        if (!primaryMesh) continue;
-
-        // Collect all unique meshes that contribute to this patch
-        const meshSet = new Set([...meshCount.keys()]);
-        const meshes  = [...meshSet];
-
-        // Apply surface material to all contributing meshes
-        const mat = MAT[type] ? MAT[type].clone() : MAT.model.clone();
-        mat.polygonOffset = true; mat.polygonOffsetFactor = 1; mat.polygonOffsetUnits = 1;
-        meshes.forEach(m => {
-          m.material = mat.clone();
-          m.material.polygonOffset = true;
-          m.material.polygonOffsetFactor = 1;
-          m.material.polygonOffsetUnits  = 1;
-        });
-
-        surfaces.push({
-          id:               idCounter++,
-          mesh:             primaryMesh,
-          meshes,
-          type,
-          area:             Math.round(area * 10) / 10,
-          elevation,
-          normalAngle,
-          worldNormal:      normal.clone(),
-          originalMaterial: primaryMesh.material,
-          plants:           [],
-        });
-      }
-
-      return surfaces;
-    }
 
     /* ============================================================
        SURFACE PANEL
     ============================================================ */
-    function populateSurfacePanel() {
-      const section = document.getElementById('section-surfaces');
-      const list    = document.getElementById('surfaces-list');
-      if (!section || !list) return;
-
-      list.innerHTML = '';
-
-      const groups = { ground: [], roof: [], wall: [], sloped: [] };
-      surfaces.forEach(s => (groups[s.type] || groups.sloped).push(s));
-
-      const labels = { ground: 'Ground', roof: 'Roof', wall: 'Wall', sloped: 'Sloped' };
-
-      Object.entries(groups).forEach(([type, items]) => {
-        if (!items.length) return;
-        const groupLabel = document.createElement('div');
-        groupLabel.className = 'tool-group-label';
-        groupLabel.textContent = `${labels[type]} (${items.length})`;
-        list.appendChild(groupLabel);
-
-        items.forEach(s => {
-          const item = document.createElement('div');
-          item.className = 'surface-item';
-          item.dataset.surfaceId = s.id;
-          item.innerHTML = `
-            <span class="surface-dot ${type}"></span>
-            <span class="surface-label">${labels[type]} ${s.id + 1}</span>
-            <span class="surface-area">${s.area} m&sup2;</span>`;
-
-          item.addEventListener('mouseenter', () => hoverSurface(s));
-          item.addEventListener('mouseleave', () => unhoverSurface(s));
-          item.addEventListener('click', ()       => selectSurface(s));
-          list.appendChild(item);
-        });
-      });
-
-      section.style.display = 'block';
-
-      const groundCount = groups.ground.length;
-      const roofCount   = groups.roof.length;
-      const wallCount   = groups.wall.length;
-      document.getElementById('model-surface-count').textContent = surfaces.length;
-      document.getElementById('model-ground-count').textContent  = groundCount;
-      document.getElementById('model-roof-count').textContent    = roofCount;
-      document.getElementById('model-wall-count').textContent    = wallCount;
-    }
 
     /* ============================================================
        SURFACE HOVER + SELECTION
     ============================================================ */
-    function typeMat(s) {
-      const m = MAT[s.type] ? MAT[s.type].clone() : MAT.model.clone();
-      m.polygonOffset = true; m.polygonOffsetFactor = 1; m.polygonOffsetUnits = 1;
-      return m;
-    }
 
-    function applyMatToSurface(s, mat) {
-      const meshes = s.meshes || [s.mesh];
-      meshes.forEach(mesh => { mesh.material = mat.clone(); });
-    }
 
-    function hoverSurface(s) {
-      if (s === selectedSurface) return;
-      if (hoveredSurface && hoveredSurface !== selectedSurface) {
-        applyMatToSurface(hoveredSurface, typeMat(hoveredSurface));
-      }
-      hoveredSurface = s;
-      const hm = MAT.hover.clone();
-      hm.polygonOffset = true; hm.polygonOffsetFactor = -2; hm.polygonOffsetUnits = -2;
-      applyMatToSurface(s, hm);
-      document.querySelectorAll('.surface-item').forEach(el => {
-        el.classList.toggle('hovered', parseInt(el.dataset.surfaceId) === s.id);
-      });
-    }
 
-    function unhoverSurface(s) {
-      if (s === selectedSurface) return;
-      applyMatToSurface(s, typeMat(s));
-      hoveredSurface = null;
-      document.querySelectorAll('.surface-item').forEach(el => el.classList.remove('hovered'));
-    }
 
-    function selectSurface(s) {
-      if (selectedSurface && selectedSurface !== s) {
-        selectedSurface.mesh.material = typeMat(selectedSurface);
-        document.querySelectorAll('.surface-item').forEach(el => el.classList.remove('selected'));
-      }
-      selectedSurface = s;
-      const sm = MAT.selected.clone();
-      sm.polygonOffset = true; sm.polygonOffsetFactor = -2; sm.polygonOffsetUnits = -2;
-      applyMatToSurface(s, sm);
 
-      document.querySelectorAll('.surface-item').forEach(el => {
-        el.classList.toggle('selected', parseInt(el.dataset.surfaceId) === s.id);
-      });
-
-      const typeLabels = { ground: 'Ground plane', roof: 'Roof plane', wall: 'Wall plane', sloped: 'Sloped surface' };
-      document.getElementById('surface-section').style.display = 'block';
-      document.getElementById('surf-type').textContent      = typeLabels[s.type] || s.type;
-      document.getElementById('surf-area').textContent      = s.area + ' m\u00b2';
-      document.getElementById('surf-elevation').textContent = s.elevation + ' m';
-      document.getElementById('surf-normal').textContent    = s.normalAngle + '\u00b0 from vertical';
-
-      // Show substrate depth input for non-ground surfaces
-      const subRow = document.getElementById('surf-substrate-row');
-      const subEl  = document.getElementById('surf-substrate');
-      const capEl  = document.getElementById('surf-substrate-cap');
-      if (subRow && subEl) {
-        const showSub = (s.type === 'roof' || s.type === 'sloped' || s.type === 'wall');
-        subRow.style.display = showSub ? '' : 'none';
-        subEl.value = s.substrate_mm || '';
-        if (capEl) capEl.style.display = 'none';
-      }
-
-      document.getElementById('gpr-section').style.display = 'block';
-
-      // Update plant schedule for this surface
-      renderSurfacePlantSchedule(s);
-
-      // Update modal if open
-      if (plantModalOpen) refreshModalStatus();
-
-      showFeedback(`${typeLabels[s.type]} selected \u2014 ${s.area} m\u00b2`);
-    }
-
-    function deselectSurface() {
-      if (selectedSurface) {
-        applyMatToSurface(selectedSurface, typeMat(selectedSurface));
-        selectedSurface = null;
-      }
-      document.querySelectorAll('.surface-item').forEach(el => el.classList.remove('selected'));
-      document.getElementById('surface-section').style.display = 'none';
-      if (currentMode === '2d') switchMode('3d');
-    }
 
     /* ============================================================
        RAYCASTER
@@ -884,20 +477,8 @@
     const raycaster  = new THREE.Raycaster();
     const pointerNDC = new THREE.Vector2();
 
-    function getPointerNDC(e) {
-      const rect = renderer.domElement.getBoundingClientRect();
-      pointerNDC.x =  ((e.clientX - rect.left) / rect.width)  * 2 - 1;
-      pointerNDC.y = -((e.clientY - rect.top)  / rect.height) * 2 + 1;
-    }
 
     // Build flat list of all meshes mapped back to their surface
-    function allSurfaceMeshes() {
-      const map = new Map();
-      surfaces.forEach(s => {
-        (s.meshes || [s.mesh]).forEach(m => map.set(m, s));
-      });
-      return map;
-    }
 
     renderer.domElement.addEventListener('pointermove', e => {
       if (currentMode !== '3d' || !importedModel || pan2DActive) return;
@@ -1321,6 +902,13 @@
     /* ============================================================
        MODE SWITCHING
     ============================================================ */
+    // Wire surfaces.js callbacks now that the functions are defined
+    initSurfaces({
+      fitSurfaceCamera,
+      drawSurfaceCanvasOutline,
+      clearSurfaceCanvasOutline,
+    });
+
     function switchMode(mode) {
       currentMode = mode;
       setNorthPointMode(mode);
