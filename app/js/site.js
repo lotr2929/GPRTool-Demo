@@ -4,101 +4,104 @@
 import * as THREE from 'three';
 import { state } from './state.js';
 import { showFeedback } from './ui.js';
-import { latlonToMetres, computeBBox, computePolygonArea, computePolygonPerimeter } from './geo.js';
+import { latlonToMetres, computeBBox, computePolygonArea, computePolygonPerimeter, loadMapTiles } from './geo.js';
 import { openBoundaryPicker } from './site-boundary.js';
 import { getRealWorldAnchor, sceneToWGS84, wgs84ToScene } from './real-world.js';
-import { addBoundaryToGPR, getActiveGPRBlob } from './gpr-file.js';
+import { addBoundaryToGPR, getActiveGPRBlob, downloadGPR } from './gpr-file.js';
 import { saveProject } from './projects.js';
+import { updateSceneHelpers } from './grid.js';
+import { fit2DCamera, update2DCamera, switchMode } from './viewport.js';
 
 export function drawSiteBoundary(coords, opts = {}) {
-      suppressResize = true;
-      if (state.siteBoundaryLine) {
-        scene.remove(state.siteBoundaryLine);
-        state.siteBoundaryLine.geometry.dispose();
-        state.siteBoundaryLine = null;
-      }
+  if (state.siteBoundaryLine) {
+    state.scene.remove(state.siteBoundaryLine);
+    state.siteBoundaryLine.geometry.dispose();
+    state.siteBoundaryLine = null;
+  }
 
-      const bbox = computeBBox(coords);
+  const bbox = computeBBox(coords);
+  const originLon = (opts.originLng != null) ? opts.originLng : bbox.cLon;
+  const originLat = (opts.originLat != null) ? opts.originLat : bbox.cLat;
 
-      // If a geocoded origin is supplied (from Select Site), use it as the
-      // world origin so the address point is always at (0,0,0) = screen centre.
-      // Otherwise fall back to the parcel centroid (manual GeoJSON import).
-      const originLon = (opts.originLng != null) ? opts.originLng : bbox.cLon;
-      const originLat = (opts.originLat != null) ? opts.originLat : bbox.cLat;
+  window._siteBBoxCenter = { cLon: originLon, cLat: originLat };
+  state.siteOriginLon = originLon;
+  state.siteOriginLat = originLat;
 
-      window._siteBBoxCenter = { cLon: originLon, cLat: originLat };
-      state.siteOriginLon = originLon;
-      state.siteOriginLat = originLat;
-      const points = coords.map(c => {
-        const [x, z] = latlonToMetres(c[0], c[1], originLon, originLat);
-        return new THREE.Vector3(x, 0, z);
-      });
+  const points = coords.map(c => {
+    const [x, z] = latlonToMetres(c[0], c[1], originLon, originLat);
+    return new THREE.Vector3(x, 0, z);
+  });
 
-      const geom = new THREE.BufferGeometry().setFromPoints(points);
-      const mat  = new THREE.LineBasicMaterial({ color: 0xff6600, linewidth: 2 });
-      state.siteBoundaryLine = new THREE.LineLoop(geom, mat);
-      scene.add(state.siteBoundaryLine);
+  const geom = new THREE.BufferGeometry().setFromPoints(points);
+  const mat  = new THREE.LineBasicMaterial({ color: 0xff6600, linewidth: 2 });
+  state.siteBoundaryLine = new THREE.LineLoop(geom, mat);
+  state.scene.add(state.siteBoundaryLine);
 
-      const box    = new THREE.Box3().setFromObject(state.siteBoundaryLine);
-      const size   = new THREE.Vector3();
-      const center = new THREE.Vector3();
-      box.getSize(size);
-      box.getCenter(center);
-      const siteSpan = Math.max(size.x, size.z);
+  const box    = new THREE.Box3().setFromObject(state.siteBoundaryLine);
+  const size   = new THREE.Vector3();
+  const center = new THREE.Vector3();
+  box.getSize(size);
+  box.getCenter(center);
+  const siteSpan = Math.max(size.x, size.z);
 
-      updateSceneHelpers(siteSpan);
+  updateSceneHelpers(siteSpan);
 
-      // Centre state.camera on geocoded origin (0,0,0) when opts.originLng is set,
-      // so the address point is always in the middle of the view.
-      if (opts.originLng != null) {
-        const aspect = container.clientWidth / (container.clientHeight || 1);
-        const halfH  = Math.max(siteSpan * 0.8, 100);
-        state.base2DhalfH  = halfH;
-        state.camera2D.left   = -halfH * aspect;
-        state.camera2D.right  =  halfH * aspect;
-        state.camera2D.top    =  halfH;
-        state.camera2D.bottom = -halfH;
-        state.pan2D.x = 0;
-        state.pan2D.z = 0;
-        state.zoom2D  = 1;
-        update2DCamera();
-      } else {
-        fit2DCamera(box);
-      }
-      loadMapTiles(bbox);
-      switchMode('2d');
+  if (opts.originLng != null) {
+    const aspect = state.container.clientWidth / (state.container.clientHeight || 1);
+    const halfH  = Math.max(siteSpan * 0.8, 100);
+    state.base2DhalfH  = halfH;
+    state.camera2D.left   = -halfH * aspect;
+    state.camera2D.right  =  halfH * aspect;
+    state.camera2D.top    =  halfH;
+    state.camera2D.bottom = -halfH;
+    state.pan2D.x = 0;
+    state.pan2D.z = 0;
+    state.zoom2D  = 1;
+    update2DCamera();
+  } else {
+    fit2DCamera(box);
+  }
 
-      const area      = computePolygonArea(coords);
-      const perimeter = computePolygonPerimeter(coords);
+  loadMapTiles(bbox);
+  switchMode('2d');
 
-      // Capture site area for GPR denominator
-      siteAreaM2 = area;
+  const area      = computePolygonArea(coords);
+  const perimeter = computePolygonPerimeter(coords);
 
-      document.getElementById('empty-props').style.display        = 'none';
-      document.getElementById('site-info-section').style.display  = 'block';
-      document.getElementById('gpr-section').style.display        = 'block';
-      document.getElementById('site-area').textContent            = area.toFixed(0) + ' m\u00b2';
-      document.getElementById('site-perimeter').textContent       = perimeter.toFixed(0) + ' m';
-      document.getElementById('site-points').textContent          = coords.length - 1;
-      document.getElementById('clearSiteBtn').style.display       = 'block';
-      document.getElementById('left-panel').classList.add('site-imported');
+  state.siteAreaM2 = area;
 
-      recalcGPR();
+  document.getElementById('empty-props').style.display        = 'none';
+  document.getElementById('site-info-section').style.display  = 'block';
+  document.getElementById('gpr-section').style.display        = 'block';
+  document.getElementById('site-area').textContent            = area.toFixed(0) + ' m\u00b2';
+  document.getElementById('site-perimeter').textContent       = perimeter.toFixed(0) + ' m';
+  document.getElementById('site-points').textContent          = coords.length - 1;
+  document.getElementById('clearSiteBtn').style.display       = 'block';
+  document.getElementById('left-panel').classList.add('site-imported');
 
-      suppressResize = false;
-      requestAnimationFrame(() => requestAnimationFrame(() => {
-        const w = container.clientWidth  || 1;
-        const h = container.clientHeight || 1;
-        state.renderer.setSize(w, h, false);
-        state.camera3D.aspect = w / h;
-        state.camera3D.updateProjectionMatrix();
-        if (state.siteBoundaryLine && opts.originLng == null) {
-          fit2DCamera(new THREE.Box3().setFromObject(state.siteBoundaryLine));
-        }
-      }));
-      showFeedback(`Site loaded \u2014 ${coords.length - 1} points, ${area.toFixed(0)} m\u00b2`);
-    }\u00b0, `
-      + `${wgs84Bounds.sw.lng.toFixed(5)}\u00b0`;
+  showFeedback(`Site loaded \u2014 ${coords.length - 1} points, ${area.toFixed(0)} m\u00b2`);
+}
+
+export function buildBoundaryPanel(wgs84Bounds, hasExisting = false) {
+  document.getElementById('lot-boundary-section')?.remove();
+
+  const section = document.createElement('div');
+  section.id        = 'lot-boundary-section';
+  section.className = 'command-section';
+  section.style.cssText = 'padding:8px 10px;border-bottom:1px solid var(--chrome-border);';
+
+  const title = document.createElement('div');
+  title.style.cssText = 'font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.07em;color:var(--text-secondary);margin-bottom:6px;';
+  title.textContent = 'Lot Boundary';
+  section.appendChild(title);
+
+  const row = document.createElement('div');
+  row.style.cssText = 'display:flex;flex-direction:column;gap:6px;';
+
+  if (wgs84Bounds) {
+    const info = document.createElement('span');
+    info.style.cssText = 'font-size:10px;color:var(--text-secondary);';
+    info.textContent = `NE: ${wgs84Bounds.ne?.lat?.toFixed(5) ?? ''}\u00b0, SW: ${wgs84Bounds.sw?.lng?.toFixed(5) ?? ''}\u00b0`;
     row.appendChild(info);
   }
 
@@ -121,7 +124,6 @@ export function drawSiteBoundary(coords, opts = {}) {
         btn.textContent = '\u2713 Lot Boundary saved \u2014 Re-draw\u2026';
         btn.style.background = 'var(--accent-dark,#2d6b2d)';
         showFeedback('Lot boundary saved to project');
-        // ── Update Supabase repository with boundary ───────────────
         const anchor = getRealWorldAnchor();
         const blob   = await getActiveGPRBlob();
         if (blob && anchor) {
@@ -138,10 +140,8 @@ export function drawSiteBoundary(coords, opts = {}) {
       }
     });
   });
-
   row.appendChild(btn);
 
-  // Download button
   const dlBtn = document.createElement('button');
   dlBtn.textContent = '\u2913 Download .gpr';
   dlBtn.style.cssText = `
@@ -150,8 +150,7 @@ export function drawSiteBoundary(coords, opts = {}) {
     border-radius:4px; text-align:left;`;
   dlBtn.addEventListener('click', async () => {
     try {
-      const siteName = document.title || 'project';
-      await downloadGPR(siteName);
+      await downloadGPR(document.title || 'project');
     } catch (err) {
       showFeedback('Download failed: ' + err.message);
     }
@@ -182,14 +181,14 @@ export function renderLotBoundary(boundaryGeojson) {
   clearLotBoundary();
   if (!boundaryGeojson?.geometry?.coordinates?.[0]) return;
 
-  const ring   = boundaryGeojson.geometry.coordinates[0];
-  const pts    = ring.map(([lng, lat]) => {
+  const ring = boundaryGeojson.geometry.coordinates[0];
+  const pts  = ring.map(([lng, lat]) => {
     const sc = wgs84ToScene(lat, lng);
     return sc ? new THREE.Vector3(sc.x, 0.15, sc.z) : null;
   }).filter(Boolean);
 
   if (pts.length < 3) return;
-  pts.push(pts[0]);   // close the ring
+  pts.push(pts[0]);
 
   const geom = new THREE.BufferGeometry().setFromPoints(pts);
   const mat  = new THREE.LineBasicMaterial({ color: 0xff6600, linewidth: 2 });
@@ -198,13 +197,11 @@ export function renderLotBoundary(boundaryGeojson) {
   state.lotBoundaryGroup.add(new THREE.Line(geom, mat));
   state.scene.add(state.lotBoundaryGroup);
 
-  // Add to Properties panel under Site Context
   buildLotBoundaryLayerRow();
 }
 
 export function buildLotBoundaryLayerRow() {
-  const existing = document.getElementById('lot-boundary-layer-row');
-  if (existing) existing.remove();
+  document.getElementById('lot-boundary-layer-row')?.remove();
 
   const section = document.getElementById('cadmapper-layer-section');
   if (!section) return;
@@ -230,17 +227,14 @@ export function buildLotBoundaryLayerRow() {
 export function showSitePin(lat, lng) {
   if (state.siteBoundaryLine) state.siteBoundaryLine.visible = false;
 
-  // Clear any previous mesh pin
   if (state.sitePinGroup) {
     state.scene.remove(state.sitePinGroup);
     state.sitePinGroup.traverse(c => { c.geometry?.dispose(); c.material?.dispose(); });
     state.sitePinGroup = null;
   }
 
-  // Remove any existing DOM pin
   document.getElementById('site-pin-dom')?.remove();
 
-  // Create DOM teardrop pin
   state.sitePinDom = document.createElement('div');
   state.sitePinDom.id = 'site-pin-dom';
   state.sitePinDom.style.cssText = `
@@ -256,12 +250,10 @@ export function showSitePin(lat, lng) {
     </svg>`;
   document.getElementById('viewport').appendChild(state.sitePinDom);
 
-  // Convert Nominatim lat/lng to world coords using the same bbox centre that
-  // drawSiteBoundary used — this places pin at the geocoded address, not polygon centroid
   if (lat != null && lng != null && window._siteBBoxCenter) {
-    const bc  = window._siteBBoxCenter;
-    const wx  =  (lng - bc.cLon) * Math.cos(bc.cLat * Math.PI / 180) * 111320;
-    const wz  = -(lat - bc.cLat) * 111320;
+    const bc = window._siteBBoxCenter;
+    const wx =  (lng - bc.cLon) * Math.cos(bc.cLat * Math.PI / 180) * 111320;
+    const wz = -(lat - bc.cLat) * 111320;
     state.sitePinWorldPos = new THREE.Vector3(wx, 0, wz);
   } else {
     state.sitePinWorldPos = new THREE.Vector3(0, 0, 0);
@@ -273,7 +265,7 @@ export function showSitePin(lat, lng) {
 export function updateSitePinDOM() {
   if (!state.sitePinDom || !state.sitePinWorldPos) return;
   const vec  = state.sitePinWorldPos.clone().project(state.camera);
-  const rect = canvas.getBoundingClientRect();
+  const rect = state.canvas.getBoundingClientRect();
   const x    = (vec.x *  0.5 + 0.5) * rect.width;
   const y    = (vec.y * -0.5 + 0.5) * rect.height;
   state.sitePinDom.style.left = x + 'px';

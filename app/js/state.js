@@ -49,7 +49,7 @@ export const state = {
   sitePinWorldPos: null,
   siteOriginLon:   0,
   siteOriginLat:   0,
-  siteAreaM2:      0,
+  siteAreaM2:      0,   // site area in m² — GPR denominator
   terrainMesh:     null,
 
   // ── 3D model ─────────────────────────────────────────────────────────────
