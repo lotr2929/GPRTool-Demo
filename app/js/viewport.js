@@ -5,8 +5,13 @@ import * as THREE from 'three';
 import { state } from './state.js';
 import { showFeedback } from './ui.js';
 import { updateSceneHelpers } from './grid.js';
-import { getDesignNorthAngle, updateNorthRotation } from './north-point-2d.js';
+import { getDesignNorthAngle, updateNorthRotation, setNorthPointMode } from './north-point-2d.js';
 import { renderCompassGizmo, updateGizmoOverlay } from './north-point-3d.js';
+
+// ── Module-level vars (stay in viewport scope) ───────────────────────────
+let surfaceCanvasOutline = null;
+let suppressResize       = false;
+let resizeRAF            = null;
 
 export function syncViewportBackground() {
   const css = getComputedStyle(document.documentElement)
@@ -212,8 +217,8 @@ export function switchMode(mode) {
     btn.classList.toggle('active', btn.dataset.mode === mode));
 
   if (mode === '2d') {
-    state.camera = state.camera2D;
-    controls = controls2D;
+    state.camera   = state.camera2D;
+    state.controls = state.controls2D;
 
     if (state.selectedSurface) {
       fitSurfaceCamera(state.selectedSurface);
@@ -235,8 +240,8 @@ export function switchMode(mode) {
       showFeedback('2D Plan View');
     }
   } else {
-    state.camera = state.camera3D;
-    controls = state.controls3D;
+    state.camera   = state.camera3D;
+    state.controls = state.controls3D;
     clearSurfaceCanvasOutline();
     setGridVisible(false);  // grid hidden in 3D (Design Grid also hidden)
     if (state.axesHelper) state.axesHelper.visible = true;

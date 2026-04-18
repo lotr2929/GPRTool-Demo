@@ -91,13 +91,13 @@
 
     // ── CAD Universe grid (REAL WORLD — True North fixed, never rotates) ─────
     // CAD Grid spacing — auto-calculated from site span unless overridden
-    let manualGridSpacing    = null;   // major (m); null = auto
-    let manualMinorDivisions = null;   // sub-divisions; null = none
+    let manualGridSpacing    = null;
+    let manualMinorDivisions = null;
     let _lastSiteSpan        = 1000;
-    // ── Design World state (overlays only — never stores geographic data) ─────
-    let designGridManager    = null;   // Design Grid system (see js/design-grid.js)
-    // Design Grid spacing — starts equal to CAD values at import, user-controlled thereafter
-    let feedbackTimer    = null;
+    let designGridManager    = null;
+    let feedbackTimer        = null;
+    // placementMode declared early to avoid temporal dead zone in event handlers
+    let placementMode        = 'idle';
     // ── Lot boundary (REAL WORLD — WGS84 GeoJSON → Three.js line) ────────────
 
     // Surface registry — populated after model load
@@ -171,6 +171,8 @@
     state.controls3D.touches            = { ONE: THREE.TOUCH.ROTATE, TWO: THREE.TOUCH.DOLLY_PAN };
 
     const controls2D = { update: () => {}, saveState: () => {}, target: new THREE.Vector3() };
+    state.controls2D = controls2D;
+    state.controls   = controls2D; // starts in 2D mode
 
 
 
@@ -360,7 +362,7 @@
     }, { passive: false });
 
 
-    let controls = controls2D;
+    // active controls now managed via state.controls (set by switchMode)
 
     /* ============================================================
        LIGHTS
@@ -541,17 +543,9 @@
 
       // Show unit conversion note if rescaled
       const unitNote = document.getElementById('model-unit-note');
-      if (unitNote) {
-        if (unit !== 'm') {
-          unitNote.textContent = `\u26a0 Detected as ${unit} \u2014 scaled to metres automatically`;
-          unitNote.style.display = '';
-        } else {
-          unitNote.style.display = 'none';
-        }
-      }
+      if (unitNote) unitNote.style.display = 'none';
 
-      showFeedback(`${format} model loaded \u2014 ${state.surfaces.length} state.surfaces detected`
-        + (unit !== 'm' ? ` (converted from ${unit})` : ''));
+      showFeedback(`${format} model loaded \u2014 ${state.surfaces.length} surfaces detected`);
     }
 
     /* ============================================================
@@ -679,7 +673,7 @@
        ANIMATION LOOP
     ============================================================ */
     (function animate() {
-      controls.update();
+      state.controls.update();
       updateNorthRotation();
 
       // ── CAD Universe orientation ──────────────────────────────────────────
@@ -782,6 +776,7 @@
       state.hoveredSurface  = null;
       state.selectedSurface = null;
       siteAreaM2      = 0;
+      state.siteAreaM2 = 0;
       clearSurfaceCanvasOutline();
 
       document.getElementById('left-panel').classList.remove('site-imported');
@@ -1032,7 +1027,7 @@
 
     // ── State ──────────────────────────────────────────────────
     //  mode: 'idle' | 'placing_circle' | 'placing_polygon' | 'editing'
-    let placementMode    = 'idle';
+    // placementMode declared near top of module to avoid TDZ
     let placingSpecies   = null;   // species object being placed
     let placingCircle    = null;   // { cx, cz, radius } — preview
     let placingPoly      = [];     // [{x,z}] — polygon vertices in progress
@@ -1218,57 +1213,8 @@
     // ── Patch addPlantBtn — also triggers modal (existing) ──────
     // (no change needed — it opens the modal, modal now starts placement)
 
-    // ── Schedule row: show placement status ─────────────────────
-    // Patch renderSurfacePlantSchedule to add placement indicator
-    const _origRenderSchedule = renderSurfacePlantSchedule;
-    renderSurfacePlantSchedule = function(surface) {
-      _origRenderSchedule(surface);
-      // Add placement badges to each row
-      const listEl = document.getElementById('surf-plant-list');
-      if (!listEl || !surface) return;
-      const plants = surface.plants || [];
-      const rows   = listEl.querySelectorAll('div');
-      plants.forEach((inst, idx) => {
-        const row = rows[idx];
-        if (!row) return;
-        // Find or create placement badge
-        let badge = row.querySelector('.placement-badge');
-        if (!badge) {
-          badge = document.createElement('span');
-          badge.className = 'placement-badge';
-          badge.style.cssText = 'font-size:10px;padding:1px 5px;border-radius:3px;flex-shrink:0;cursor:pointer;';
-          // Insert before the × button (last child)
-          row.insertBefore(badge, row.lastChild);
-        }
-        if (inst.placement) {
-          const typeLabel = inst.placement.type === 'circle' ? '●' : '■';
-          badge.textContent = typeLabel + ' placed';
-          badge.style.background = '#1a3d1a';
-          badge.style.color      = '#7fc47f';
-          badge.style.border     = '1px solid #2e6b2e';
-          badge.title = 'Plant is placed on canvas. Click to re-place.';
-          badge.onclick = () => {
-            // Remove old proxy and start re-placement
-            removeProxyForInstance(inst);
-            inst.placement = null;
-            inst.canopyArea = surface.area;
-            renderSurfacePlantSchedule(surface);
-            const sp = plantDb.find(p => p.id === inst.speciesId);
-            if (sp) startPlacement(sp);
-          };
-        } else {
-          badge.textContent = 'unplaced';
-          badge.style.background = '#2a2a1a';
-          badge.style.color      = '#c4b47f';
-          badge.style.border     = '1px solid #5a5010';
-          badge.title = 'Not yet placed on canvas. Click to place.';
-          badge.onclick = () => {
-            const sp = plantDb.find(p => p.id === inst.speciesId);
-            if (sp) startPlacement(sp);
-          };
-        }
-      });
-    };
+    // ── Schedule row placement patch ─────────────────────────
+    // (placeholder — plants.js will handle this properly in a later sprint)
 
     /* ============================================================
        MENU BAR

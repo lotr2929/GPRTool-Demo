@@ -25,6 +25,8 @@ export const state = {
   canvas:     null,
   container:  null,
   controls3D: null,
+  controls2D: null,      // stub { update:()=>{} }
+  controls:   null,      // active controls (controls2D or controls3D)
 
   // ── Viewport ────────────────────────────────────────────────────────────
   currentMode:    '2d',    // '2d' | '3d'
