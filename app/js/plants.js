@@ -426,9 +426,9 @@ export function cancelPlacement() {
 export function clearPreview() {
   if (previewMesh) {
     if (Array.isArray(previewMesh)) {
-      previewMesh.forEach(m => { scene.remove(m); m.geometry?.dispose(); });
+      previewMesh.forEach(m => { state.scene.remove(m); m.geometry?.dispose(); });
     } else {
-      scene.remove(previewMesh); previewMesh.geometry?.dispose();
+      state.scene.remove(previewMesh); previewMesh.geometry?.dispose();
     }
     previewMesh = null;
   }
@@ -447,7 +447,7 @@ export function showCirclePreview(cx, cz, radius, surface) {
   const geom = new THREE.BufferGeometry().setFromPoints(pts);
   previewMesh = new THREE.Line(geom, PROXY_MAT.previewLine);
   previewMesh.renderOrder = 10;
-  scene.add(previewMesh);
+  state.scene.add(previewMesh);
 }
 
 export function showPolygonPreview(pts, mouseUV, surface) {
@@ -464,7 +464,7 @@ export function showPolygonPreview(pts, mouseUV, surface) {
     const g2 = new THREE.BufferGeometry().setFromPoints([lastW, curW]);
     lines.push(new THREE.Line(g2, PROXY_MAT.previewLine));
   }
-  lines.forEach(l => { l.renderOrder = 10; scene.add(l); });
+  lines.forEach(l => { l.renderOrder = 10; state.scene.add(l); });
   previewMesh = lines;
 }
 
@@ -584,7 +584,7 @@ export function buildCircleProxy(inst, surface, species) {
   const lineGeom = new THREE.BufferGeometry().setFromPoints(circlePts);
   const lineLoop  = new THREE.Line(lineGeom, new THREE.LineBasicMaterial({ color: 0x2d7a2d }));
   lineLoop.renderOrder = 3;
-  scene.add(lineLoop);
+  state.scene.add(lineLoop);
   inst.placement._footprintLine = lineLoop;
 
   group.position.copy(worldCentre);
@@ -655,7 +655,7 @@ export function buildPolygonProxy(inst, surface, species) {
   const outlineGeom = new THREE.BufferGeometry().setFromPoints([...worldPts, worldPts[0]]);
   const outline = new THREE.Line(outlineGeom, new THREE.LineBasicMaterial({ color: 0x2d7a2d }));
   outline.renderOrder = 4;
-  scene.add(outline);
+  state.scene.add(outline);
   inst.placement._outlineLine = outline;
 
   return mesh;
@@ -668,11 +668,11 @@ export function removeProxyForInstance(inst) {
     inst.placement.mesh.traverse(c => c.geometry?.dispose());
   }
   if (inst.placement._footprintLine) {
-    scene.remove(inst.placement._footprintLine);
+    state.scene.remove(inst.placement._footprintLine);
     inst.placement._footprintLine.geometry?.dispose();
   }
   if (inst.placement._outlineLine) {
-    scene.remove(inst.placement._outlineLine);
+    state.scene.remove(inst.placement._outlineLine);
     inst.placement._outlineLine.geometry?.dispose();
   }
 }

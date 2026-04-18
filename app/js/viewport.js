@@ -31,7 +31,7 @@ export function fit2DCamera(box) {
   box.getSize(size);
   box.getCenter(center);
 
-  const aspect = container.clientWidth / (container.clientHeight || 1);
+  const aspect = state.container.clientWidth / (state.container.clientHeight || 1);
   const siteW  = size.x * 1.3;
   const siteH  = size.z * 1.3;
   const halfH  = Math.max(siteW / (2 * aspect), siteH / 2, 100); // min 200m view
@@ -66,7 +66,7 @@ export function fit3DCamera(box) {
 
 export function drawSurfaceCanvasOutline(surface) {
   if (surfaceCanvasOutline) {
-    scene.remove(surfaceCanvasOutline);
+    state.scene.remove(surfaceCanvasOutline);
     surfaceCanvasOutline.geometry.dispose();
     surfaceCanvasOutline = null;
   }
@@ -122,12 +122,12 @@ export function drawSurfaceCanvasOutline(surface) {
     new THREE.LineBasicMaterial({ color: 0x2a7a2a, linewidth: 2, depthTest: false })
   );
   surfaceCanvasOutline.renderOrder = 999;
-  scene.add(surfaceCanvasOutline);
+  state.scene.add(surfaceCanvasOutline);
 }
 
 export function clearSurfaceCanvasOutline() {
   if (surfaceCanvasOutline) {
-    scene.remove(surfaceCanvasOutline);
+    state.scene.remove(surfaceCanvasOutline);
     surfaceCanvasOutline.geometry.dispose();
     surfaceCanvasOutline = null;
   }
@@ -148,7 +148,7 @@ export function fitSurfaceCamera(surface) {
   const n = surface.worldNormal.clone().normalize();
   const isHorizontal = Math.abs(n.y) > 0.7;
 
-  const aspect = container.clientWidth / (container.clientHeight || 1);
+  const aspect = state.container.clientWidth / (state.container.clientHeight || 1);
   let halfW, halfH, camPos, up, camNormal;
 
   if (state.canvasMode === 'surface') {
@@ -256,8 +256,8 @@ export function resizeToContainer() {
   if (resizeRAF) cancelAnimationFrame(resizeRAF);
   resizeRAF = requestAnimationFrame(() => {
     resizeRAF = null;
-    const w = container.clientWidth  || 1;
-    const h = container.clientHeight || 1;
+    const w = state.container.clientWidth  || 1;
+    const h = state.container.clientHeight || 1;
     state.renderer.setSize(w, h, false);
     state.camera3D.aspect = w / h;
     state.camera3D.updateProjectionMatrix();

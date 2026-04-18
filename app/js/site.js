@@ -101,7 +101,7 @@ export function buildBoundaryPanel(wgs84Bounds, hasExisting = false) {
 
 export function clearLotBoundary() {
   if (state.lotBoundaryGroup) {
-    scene.remove(state.lotBoundaryGroup);
+    state.scene.remove(state.lotBoundaryGroup);
     state.lotBoundaryGroup.traverse(c => { c.geometry?.dispose(); c.material?.dispose(); });
     state.lotBoundaryGroup = null;
   }
@@ -126,7 +126,7 @@ export function renderLotBoundary(boundaryGeojson) {
   state.lotBoundaryGroup = new THREE.Group();
   state.lotBoundaryGroup.name = 'lot-boundary';
   state.lotBoundaryGroup.add(new THREE.Line(geom, mat));
-  scene.add(state.lotBoundaryGroup);
+  state.scene.add(state.lotBoundaryGroup);
 
   // Add to Properties panel under Site Context
   buildLotBoundaryLayerRow();
@@ -162,7 +162,7 @@ export function showSitePin(lat, lng) {
 
   // Clear any previous mesh pin
   if (state.sitePinGroup) {
-    scene.remove(state.sitePinGroup);
+    state.scene.remove(state.sitePinGroup);
     state.sitePinGroup.traverse(c => { c.geometry?.dispose(); c.material?.dispose(); });
     state.sitePinGroup = null;
   }
