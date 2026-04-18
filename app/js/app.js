@@ -34,6 +34,9 @@
       isGizmo3DVisible,
     } from './north-point-3d.js';
     import { state } from './state.js';
+    import { drawSiteBoundary, buildBoundaryPanel, clearLotBoundary, renderLotBoundary, buildLotBoundaryLayerRow, showSitePin, updateSitePinDOM } from './site.js';
+    import { syncViewportBackground, update2DCamera, fit2DCamera, fit3DCamera, drawSurfaceCanvasOutline, clearSurfaceCanvasOutline, fitSurfaceCamera, switchMode, resizeToContainer, toggleAxes, updateGridVisibility, setGridVisible } from './viewport.js';
+    import { recalcGPR, updateClearBtn, addPlantInstance, removePlantInstance, updateInstanceCanopyArea, updateSurfaceListTag, renderSurfacePlantSchedule, renderPlantList, refreshModalStatus, openPlantModal, closePlantModal, placementTypeForCategory, substrateCapRadius, substrateCapLabel, radiusLimits, getSurfaceCentre, raycastSurface, worldToSurfaceUV, surfaceUVToWorld, canvasNDC, startPlacement, cancelPlacement, clearPreview, showCirclePreview, showPolygonPreview, commitCirclePlacement, commitPolygonPlacement, polygonArea, proxyMatForCategory, buildCircleProxy, buildPolygonProxy, removeProxyForInstance, clearAllProxies } from './plants.js';
     import { detectSurfaces, populateSurfacePanel, selectSurface, deselectSurface,
              hoverSurface, unhoverSurface, allSurfaceMeshes, getPointerNDC,
              classifyNormal, computeMeshArea, initSurfaces } from './surfaces.js';
@@ -72,9 +75,9 @@
       if (ctrl && !e.shiftKey && e.key === 'z') { e.preventDefault(); showFeedback('Undo — coming soon'); }
       if (ctrl &&  e.shiftKey && e.key === 'Z') { e.preventDefault(); showFeedback('Redo — coming soon'); }
       if (e.key === 'Escape') { deselectSurface(); showFeedback('Ready'); }
-      // N = orient view to north (rotate2D = 0)
-      if ((e.key === 'n' || e.key === 'N') && !ctrl && currentMode === '2d') {
-        rotate2D = 0;
+      // N = orient view to north (state.rotate2D = 0)
+      if ((e.key === 'n' || e.key === 'N') && !ctrl && state.currentMode === '2d') {
+        state.rotate2D = 0;
         update2DCamera();
         showFeedback('View oriented to North');
       }
@@ -86,18 +89,7 @@
     const canvas    = document.getElementById('three-canvas');
     const container = canvas.parentElement;
 
-    let currentMode      = '2d';
-    let siteBoundaryLine = null;
-    let siteSurface      = null;
-    let sitePinGroup     = null;
-    let sitePinDom       = null;
-    let sitePinWorldPos  = null;
-    let siteOriginLon    = 0;   // map origin set by drawSiteBoundary — used for pin projection
-    let siteOriginLat    = 0;
-    let terrainMesh      = null;
-    let cadmapperGroup   = null;   // THREE.Group — CADMapper site context layers (REAL WORLD geometry)
     let mapTileGroup     = null;
-    let importedModel    = null;   // THREE.Group — the loaded 3D model
     // ── CAD Universe grid (REAL WORLD — True North fixed, never rotates) ─────
     let gridHelper           = null;
     let gridHelperMinor      = null;
@@ -118,12 +110,8 @@
 
     // Surface registry — populated after model load
     // Each entry: { id, mesh, type, area, elevation, normalAngle, originalMaterial }
-    let surfaces         = [];
-    let hoveredSurface   = null;
-    let selectedSurface  = null;
 
     // 2D canvas mode: 'ortho' = top-down/elevation, 'surface' = normal-aligned
-    let canvasMode = 'ortho';
 
     /* ============================================================
        MATERIALS
@@ -137,9 +125,9 @@
       hover:    new THREE.MeshBasicMaterial({ color: 0xd8d8d8, side: THREE.DoubleSide }),
       selected: new THREE.MeshBasicMaterial({ color: 0xc8e8c8, side: THREE.DoubleSide }),
     };
-    state.MAT = MAT; // bridge for surfaces.js
+    state.MAT = MAT; // bridge for state.surfaces.js
 
-    // ── Bridge MAT to state for surfaces.js ─────────────────────────────
+    // ── Bridge MAT to state for state.surfaces.js ─────────────────────────────
     // (MAT is assigned below after it is created)
     /* ============================================================
        RENDERER
@@ -155,11 +143,6 @@
     state.canvas   = canvas;
     state.container = container;
 
-    function syncViewportBackground() {
-      const css = getComputedStyle(document.documentElement)
-        .getPropertyValue('--vp-bgcolor').trim() || '#ffffff';
-      renderer.setClearColor(new THREE.Color(css), 1.0);
-    }
     syncViewportBackground();
     new MutationObserver(syncViewportBackground)
       .observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
@@ -198,54 +181,46 @@
     controls3D.mouseButtons       = { LEFT: THREE.MOUSE.ROTATE, MIDDLE: THREE.MOUSE.DOLLY, RIGHT: THREE.MOUSE.PAN };
     controls3D.touches            = { ONE: THREE.TOUCH.ROTATE, TWO: THREE.TOUCH.DOLLY_PAN };
 
-    const pan2D = { x: 0, z: 0 };
-    let zoom2D = 1;
-    let base2DhalfH = 50;
     const controls2D = { update: () => {}, saveState: () => {}, target: new THREE.Vector3() };
 
-    let pan2DActive = false;
-    let pan2DLast   = { x: 0, y: 0 };
 
-    let rotate2D       = 0;           // radians — 2D view rotation around world Y axis
-    let rotate2DActive = false;
-    let rotate2DLast   = { x: 0, y: 0 };
 
     renderer.domElement.addEventListener('pointerdown', e => {
-      if (currentMode !== '2d') return;
+      if (state.currentMode !== '2d') return;
       if (e.button === 1) {
         // Middle mouse — rotate the 2D view (not in surface canvas mode)
-        if (selectedSurface) return;
+        if (state.selectedSurface) return;
         e.preventDefault();
-        rotate2DActive = true;
-        rotate2DLast   = { x: e.clientX, y: e.clientY };
+        state.rotate2DActive = true;
+        state.rotate2DLast   = { x: e.clientX, y: e.clientY };
         renderer.domElement.setPointerCapture(e.pointerId);
       } else if (e.button === 0) {
         // Left mouse — pan
-        pan2DActive = true;
-        pan2DLast   = { x: e.clientX, y: e.clientY };
+        state.pan2DActive = true;
+        state.pan2DLast   = { x: e.clientX, y: e.clientY };
         renderer.domElement.setPointerCapture(e.pointerId);
       }
     });
 
     renderer.domElement.addEventListener('pointermove', e => {
-      if (currentMode !== '2d') return;
+      if (state.currentMode !== '2d') return;
 
-      if (rotate2DActive) {
-        const dx = e.clientX - rotate2DLast.x;
-        rotate2DLast = { x: e.clientX, y: e.clientY };
+      if (state.rotate2DActive) {
+        const dx = e.clientX - state.rotate2DLast.x;
+        state.rotate2DLast = { x: e.clientX, y: e.clientY };
         // Dragging full viewport width = PI radians of rotation
-        rotate2D += dx * (Math.PI / container.clientWidth);
+        state.rotate2D += dx * (Math.PI / container.clientWidth);
         update2DCamera();
         return;
       }
 
-      if (!pan2DActive) return;
-      const dx = e.clientX - pan2DLast.x;
-      const dy = e.clientY - pan2DLast.y;
-      pan2DLast = { x: e.clientX, y: e.clientY };
+      if (!state.pan2DActive) return;
+      const dx = e.clientX - state.pan2DLast.x;
+      const dy = e.clientY - state.pan2DLast.y;
+      state.pan2DLast = { x: e.clientX, y: e.clientY };
 
-      if (selectedSurface && camera2D.userData.surfaceCentre) {
-        // Surface canvas mode: pan along surface U/V axes (no rotate2D here)
+      if (state.selectedSurface && camera2D.userData.surfaceCentre) {
+        // Surface canvas mode: pan along surface U/V axes (no state.rotate2D here)
         const frustumW = (camera2D.right - camera2D.left) / camera2D.zoom;
         const frustumH = (camera2D.top - camera2D.bottom) / camera2D.zoom;
         const scaleX   = frustumW / container.clientWidth;
@@ -267,7 +242,7 @@
         // Screen down in world  = (sin(r), 0, -cos(r)) reversed for pan direction
         const frustumW = (camera2D.right - camera2D.left) / camera2D.zoom;
         const frustumH = (camera2D.top - camera2D.bottom) / camera2D.zoom;
-        const r   = rotate2D;
+        const r   = state.rotate2D;
         const scX = frustumW / container.clientWidth;
         const scZ = frustumH / container.clientHeight;
         pan2D.x -= dx * scX * Math.cos(r) - dy * scZ * Math.sin(r);
@@ -277,9 +252,9 @@
     });
 
     renderer.domElement.addEventListener('pointerup', e => {
-      if (currentMode !== '2d') return;
-      pan2DActive    = false;
-      rotate2DActive = false;
+      if (state.currentMode !== '2d') return;
+      state.pan2DActive    = false;
+      state.rotate2DActive = false;
       renderer.domElement.releasePointerCapture(e.pointerId);
     });
 
@@ -379,10 +354,10 @@
     });
 
     renderer.domElement.addEventListener('wheel', e => {
-      if (currentMode !== '2d') return;
+      if (state.currentMode !== '2d') return;
       e.preventDefault();
       const factor = e.deltaY > 0 ? 0.9 : 1.1;
-      if (selectedSurface) {
+      if (state.selectedSurface) {
         // Surface canvas zoom: scale the orthographic frustum
         camera2D.left   *= factor;
         camera2D.right  *= factor;
@@ -390,21 +365,11 @@
         camera2D.bottom *= factor;
         camera2D.updateProjectionMatrix();
       } else {
-        zoom2D = Math.max(0.002, Math.min(50, zoom2D * factor));
+        state.zoom2D = Math.max(0.002, Math.min(50, state.zoom2D * factor));
         update2DCamera();
       }
     }, { passive: false });
 
-    function update2DCamera() {
-      // If in surface canvas mode, the camera is managed by fitSurfaceCamera -- don't override it
-      if (currentMode === '2d' && selectedSurface) return;
-      camera2D.zoom = zoom2D;
-      camera2D.position.set(pan2D.x, 10000, pan2D.z);
-      // up vector encodes the view rotation: rotate2D=0 → north (-Z) points up on screen
-      camera2D.up.set(Math.sin(rotate2D), 0, -Math.cos(rotate2D));
-      camera2D.lookAt(pan2D.x, 0, pan2D.z);
-      camera2D.updateProjectionMatrix();
-    }
 
     let controls = controls2D;
 
@@ -481,22 +446,22 @@
     // Build flat list of all meshes mapped back to their surface
 
     renderer.domElement.addEventListener('pointermove', e => {
-      if (currentMode !== '3d' || !importedModel || pan2DActive) return;
+      if (state.currentMode !== '3d' || !state.importedModel || state.pan2DActive) return;
       getPointerNDC(e);
       raycaster.setFromCamera(pointerNDC, camera3D);
       const meshMap = allSurfaceMeshes();
       const hits    = raycaster.intersectObjects([...meshMap.keys()], false);
       if (hits.length) {
         const hit = meshMap.get(hits[0].object);
-        if (hit && hit !== hoveredSurface && hit !== selectedSurface) hoverSurface(hit);
+        if (hit && hit !== state.hoveredSurface && hit !== state.selectedSurface) hoverSurface(hit);
       } else {
-        if (hoveredSurface && hoveredSurface !== selectedSurface) unhoverSurface(hoveredSurface);
+        if (state.hoveredSurface && state.hoveredSurface !== state.selectedSurface) unhoverSurface(state.hoveredSurface);
       }
     });
 
     renderer.domElement.addEventListener('click', e => {
       if (placementMode && placementMode !== 'idle') return; // placement engine handles this
-      if (currentMode !== '3d' || !importedModel) return;
+      if (state.currentMode !== '3d' || !state.importedModel) return;
       getPointerNDC(e);
       raycaster.setFromCamera(pointerNDC, camera3D);
       const meshMap = allSurfaceMeshes();
@@ -541,14 +506,14 @@
        ON MODEL LOADED
     ============================================================ */
     function onModelLoaded(group, filename, format) {
-      if (importedModel) {
-        scene.remove(importedModel);
+      if (state.importedModel) {
+        scene.remove(state.importedModel);
         scene.remove(edgeGroup);
-        importedModel = null;
-        surfaces = [];
+        state.importedModel = null;
+        state.surfaces = [];
       }
 
-      importedModel = group;
+      state.importedModel = group;
 
       // Auto-detect and apply unit scale BEFORE centring
       const { scale } = detectAndApplyUnitScale(group);
@@ -596,7 +561,7 @@
         }
       }
 
-      showFeedback(`${format} model loaded \u2014 ${surfaces.length} surfaces detected`
+      showFeedback(`${format} model loaded \u2014 ${state.surfaces.length} state.surfaces detected`
         + (unit !== 'm' ? ` (converted from ${unit})` : ''));
     }
 
@@ -620,12 +585,12 @@
     /* ============================================================
        SITE BOUNDARY DRAWING (GeoJSON)
     ============================================================ */
-    function drawSiteBoundary(coords, opts = {}) {
+) {
       suppressResize = true;
-      if (siteBoundaryLine) {
-        scene.remove(siteBoundaryLine);
-        siteBoundaryLine.geometry.dispose();
-        siteBoundaryLine = null;
+      if (state.siteBoundaryLine) {
+        scene.remove(state.siteBoundaryLine);
+        state.siteBoundaryLine.geometry.dispose();
+        state.siteBoundaryLine = null;
       }
 
       const bbox = computeBBox(coords);
@@ -637,8 +602,8 @@
       const originLat = (opts.originLat != null) ? opts.originLat : bbox.cLat;
 
       window._siteBBoxCenter = { cLon: originLon, cLat: originLat };
-      siteOriginLon = originLon;
-      siteOriginLat = originLat;
+      state.siteOriginLon = originLon;
+      state.siteOriginLat = originLat;
       const points = coords.map(c => {
         const [x, z] = latlonToMetres(c[0], c[1], originLon, originLat);
         return new THREE.Vector3(x, 0, z);
@@ -646,10 +611,10 @@
 
       const geom = new THREE.BufferGeometry().setFromPoints(points);
       const mat  = new THREE.LineBasicMaterial({ color: 0xff6600, linewidth: 2 });
-      siteBoundaryLine = new THREE.LineLoop(geom, mat);
-      scene.add(siteBoundaryLine);
+      state.siteBoundaryLine = new THREE.LineLoop(geom, mat);
+      scene.add(state.siteBoundaryLine);
 
-      const box    = new THREE.Box3().setFromObject(siteBoundaryLine);
+      const box    = new THREE.Box3().setFromObject(state.siteBoundaryLine);
       const size   = new THREE.Vector3();
       const center = new THREE.Vector3();
       box.getSize(size);
@@ -663,14 +628,14 @@
       if (opts.originLng != null) {
         const aspect = container.clientWidth / (container.clientHeight || 1);
         const halfH  = Math.max(siteSpan * 0.8, 100);
-        base2DhalfH  = halfH;
+        state.base2DhalfH  = halfH;
         camera2D.left   = -halfH * aspect;
         camera2D.right  =  halfH * aspect;
         camera2D.top    =  halfH;
         camera2D.bottom = -halfH;
         pan2D.x = 0;
         pan2D.z = 0;
-        zoom2D  = 1;
+        state.zoom2D  = 1;
         update2DCamera();
       } else {
         fit2DCamera(box);
@@ -702,8 +667,8 @@
         renderer.setSize(w, h, false);
         camera3D.aspect = w / h;
         camera3D.updateProjectionMatrix();
-        if (siteBoundaryLine && opts.originLng == null) {
-          fit2DCamera(new THREE.Box3().setFromObject(siteBoundaryLine));
+        if (state.siteBoundaryLine && opts.originLng == null) {
+          fit2DCamera(new THREE.Box3().setFromObject(state.siteBoundaryLine));
         }
       }));
       showFeedback(`Site loaded \u2014 ${coords.length - 1} points, ${area.toFixed(0)} m\u00b2`);
@@ -712,261 +677,41 @@
     /* ============================================================
        CAMERA FIT HELPERS
     ============================================================ */
-    function fit2DCamera(box) {
-      const size   = new THREE.Vector3();
-      const center = new THREE.Vector3();
-      box.getSize(size);
-      box.getCenter(center);
 
-      const aspect = container.clientWidth / (container.clientHeight || 1);
-      const siteW  = size.x * 1.3;
-      const siteH  = size.z * 1.3;
-      const halfH  = Math.max(siteW / (2 * aspect), siteH / 2, 100); // min 200m view
-
-      base2DhalfH     = halfH;
-      camera2D.left   = -halfH * aspect;
-      camera2D.right  =  halfH * aspect;
-      camera2D.top    =  halfH;
-      camera2D.bottom = -halfH;
-
-      pan2D.x = center.x;
-      pan2D.z = center.z;
-      zoom2D  = 1;
-
-      update2DCamera();
-    }
-
-    function fit3DCamera(box) {
-      const size   = new THREE.Vector3();
-      const center = new THREE.Vector3();
-      box.getSize(size);
-      box.getCenter(center);
-
-      const dist = Math.max(size.x, size.y, size.z) * 1.5;
-      camera3D.position.set(center.x + dist * 0.7, dist, center.z + dist * 0.7);
-      camera3D.near = Math.max(0.1, dist * 0.01);
-      camera3D.far  = dist * 20;
-      camera3D.updateProjectionMatrix();
-      controls3D.target.copy(center);
-      controls3D.update();
-    }
 
     /* ============================================================
        SURFACE CANVAS OUTLINE
     ============================================================ */
     let surfaceCanvasOutline = null;
 
-    function drawSurfaceCanvasOutline(surface) {
-      if (surfaceCanvasOutline) {
-        scene.remove(surfaceCanvasOutline);
-        surfaceCanvasOutline.geometry.dispose();
-        surfaceCanvasOutline = null;
-      }
 
-      surface.mesh.geometry.computeBoundingBox();
-      const box = new THREE.Box3()
-        .copy(surface.mesh.geometry.boundingBox)
-        .applyMatrix4(surface.mesh.matrixWorld);
-
-      const min = box.min;
-      const max = box.max;
-
-      let pts;
-      const n = surface.worldNormal;
-      const isHorizontal = Math.abs(n.y) > 0.7;
-
-      if (isHorizontal) {
-        const y = (min.y + max.y) / 2 + 0.05;
-        pts = [
-          new THREE.Vector3(min.x, y, min.z),
-          new THREE.Vector3(max.x, y, min.z),
-          new THREE.Vector3(max.x, y, max.z),
-          new THREE.Vector3(min.x, y, max.z),
-          new THREE.Vector3(min.x, y, min.z),
-        ];
-      } else {
-        const facingX = Math.abs(n.x) > Math.abs(n.z);
-        const offset  = 0.05;
-        if (facingX) {
-          const x = n.x > 0 ? max.x + offset : min.x - offset;
-          pts = [
-            new THREE.Vector3(x, min.y, min.z),
-            new THREE.Vector3(x, min.y, max.z),
-            new THREE.Vector3(x, max.y, max.z),
-            new THREE.Vector3(x, max.y, min.z),
-            new THREE.Vector3(x, min.y, min.z),
-          ];
-        } else {
-          const z = n.z > 0 ? max.z + offset : min.z - offset;
-          pts = [
-            new THREE.Vector3(min.x, min.y, z),
-            new THREE.Vector3(max.x, min.y, z),
-            new THREE.Vector3(max.x, max.y, z),
-            new THREE.Vector3(min.x, max.y, z),
-            new THREE.Vector3(min.x, min.y, z),
-          ];
-        }
-      }
-
-      const geom = new THREE.BufferGeometry().setFromPoints(pts);
-      surfaceCanvasOutline = new THREE.Line(
-        geom,
-        new THREE.LineBasicMaterial({ color: 0x2a7a2a, linewidth: 2, depthTest: false })
-      );
-      surfaceCanvasOutline.renderOrder = 999;
-      scene.add(surfaceCanvasOutline);
-    }
-
-    function clearSurfaceCanvasOutline() {
-      if (surfaceCanvasOutline) {
-        scene.remove(surfaceCanvasOutline);
-        surfaceCanvasOutline.geometry.dispose();
-        surfaceCanvasOutline = null;
-      }
-    }
 
     /* ============================================================
        SURFACE CAMERA
     ============================================================ */
-    function fitSurfaceCamera(surface) {
-      surface.mesh.geometry.computeBoundingBox();
-      const box = new THREE.Box3()
-        .copy(surface.mesh.geometry.boundingBox)
-        .applyMatrix4(surface.mesh.matrixWorld);
-
-      const centre = new THREE.Vector3();
-      box.getCenter(centre);
-
-      const size = new THREE.Vector3();
-      box.getSize(size);
-
-      const n = surface.worldNormal.clone().normalize();
-      const isHorizontal = Math.abs(n.y) > 0.7;
-
-      const aspect = container.clientWidth / (container.clientHeight || 1);
-      let halfW, halfH, camPos, up, camNormal;
-
-      if (canvasMode === 'surface') {
-        const camDist = Math.max(size.x, size.y, size.z) * 3;
-        camPos    = centre.clone().addScaledVector(n, camDist);
-        up        = isHorizontal ? new THREE.Vector3(0, 0, -1) : new THREE.Vector3(0, 1, 0);
-        camNormal = n.clone();
-        halfW = isHorizontal ? (size.x / 2) * 1.3 : (Math.abs(n.x) > Math.abs(n.z) ? size.z : size.x) / 2 * 1.3;
-        halfH = isHorizontal ? (size.z / 2) * 1.3 : size.y / 2 * 1.3;
-      } else {
-        if (isHorizontal) {
-          const camDist = Math.max(size.x, size.z) * 3;
-          camPos    = new THREE.Vector3(centre.x, centre.y + camDist, centre.z);
-          up        = new THREE.Vector3(0, 0, -1);
-          camNormal = new THREE.Vector3(0, -1, 0);
-          halfW = (size.x / 2) * 1.3;
-          halfH = (size.z / 2) * 1.3;
-        } else {
-          const camDist = Math.max(size.x, size.y, size.z) * 3;
-          const facingX = Math.abs(n.x) > Math.abs(n.z);
-          const snapped = facingX
-            ? new THREE.Vector3(Math.sign(n.x), 0, 0)
-            : new THREE.Vector3(0, 0, Math.sign(n.z));
-          camPos    = centre.clone().addScaledVector(snapped, camDist);
-          up        = new THREE.Vector3(0, 1, 0);
-          camNormal = snapped.clone();
-          halfW = (facingX ? size.z : size.x) / 2 * 1.3;
-          halfH = size.y / 2 * 1.3;
-        }
-      }
-
-      if (halfW / halfH < aspect) halfW = halfH * aspect;
-      else halfH = halfW / aspect;
-
-      camera2D.left   = -halfW;
-      camera2D.right  =  halfW;
-      camera2D.top    =  halfH;
-      camera2D.bottom = -halfH;
-      camera2D.near   = 0.1;
-      camera2D.far    = Math.max(size.x, size.y, size.z) * 12;
-      camera2D.zoom   = 1;
-
-      camera2D.position.copy(camPos);
-      camera2D.up.copy(up);
-      camera2D.lookAt(centre);
-      camera2D.updateProjectionMatrix();
-
-      pan2D.x = 0; pan2D.z = 0; zoom2D = 1;
-      base2DhalfH = halfH;
-
-      camera2D.userData.surfaceCentre = centre.clone();
-      camera2D.userData.surfaceNormal = camNormal.clone();
-      camera2D.userData.surfaceUp     = up.clone();
-    }
 
     /* ============================================================
        MODE SWITCHING
     ============================================================ */
-    // Wire surfaces.js callbacks now that the functions are defined
+    // Wire state.surfaces.js callbacks now that the functions are defined
     initSurfaces({
       fitSurfaceCamera,
       drawSurfaceCanvasOutline,
       clearSurfaceCanvasOutline,
     });
 
-    function switchMode(mode) {
-      currentMode = mode;
-      setNorthPointMode(mode);
-
-      document.querySelectorAll('.mode-btn').forEach(btn =>
-        btn.classList.toggle('active', btn.dataset.mode === mode));
-
-      if (mode === '2d') {
-        camera   = camera2D;
-        controls = controls2D;
-
-        if (selectedSurface) {
-          fitSurfaceCamera(selectedSurface);
-          drawSurfaceCanvasOutline(selectedSurface);
-          setGridVisible(false);
-          if (axesHelper)  axesHelper.visible = false;          const typeLabels = { ground: 'Ground plane', roof: 'Roof plane', wall: 'Wall plane', sloped: 'Sloped surface' };
-          document.getElementById('status-mode').textContent = '2D';
-          const modeLabel = canvasMode === 'ortho' ? 'Ortho' : 'Surface';
-          showFeedback(`2D canvas [${modeLabel}] \u2014 ${typeLabels[selectedSurface.type] || selectedSurface.type} \u2014 ${selectedSurface.area} m\u00b2`, 0);
-        } else {
-          clearSurfaceCanvasOutline();
-          // Only show grid if no map tiles are active
-          setGridVisible(!mapTileGroup);
-          if (axesHelper) axesHelper.visible = true;
-          if (axesYLine)  axesYLine.visible  = false;
-          if (siteBoundaryLine) fit2DCamera(new THREE.Box3().setFromObject(siteBoundaryLine));
-          else if (importedModel) fit2DCamera(new THREE.Box3().setFromObject(importedModel));
-          document.getElementById('status-mode').textContent = '2D';
-          showFeedback('2D Plan View');
-        }
-      } else {
-        camera   = camera3D;
-        controls = controls3D;
-        clearSurfaceCanvasOutline();
-        setGridVisible(false);  // grid hidden in 3D (Design Grid also hidden)
-        if (axesHelper) axesHelper.visible = true;
-        if (axesYLine)  axesYLine.visible  = true;
-        const target = importedModel
-          ? new THREE.Box3().setFromObject(importedModel)
-          : (siteBoundaryLine ? new THREE.Box3().setFromObject(siteBoundaryLine) : null);
-        if (target) fit3DCamera(target);
-        document.getElementById('status-mode').textContent = '3D';
-        showFeedback('3D View \u2014 click a surface to select it');
-      }
-      updateGizmoOverlay();
-    }
 
     document.querySelectorAll('.mode-btn').forEach(btn =>
       btn.addEventListener('click', () => {
         const mode = btn.dataset.mode;
-        if (mode === currentMode) {
+        if (mode === state.currentMode) {
           // Reset current view to default
           if (mode === '2d') {
-            rotate2D = 0;
+            state.rotate2D = 0;
             pan2D.x  = 0;
             pan2D.z  = 0;
-            zoom2D   = 1;
-            const target = siteBoundaryLine || importedModel;
+            state.zoom2D   = 1;
+            const target = state.siteBoundaryLine || state.importedModel;
             if (target) {
               fit2DCamera(new THREE.Box3().setFromObject(target));
             } else {
@@ -977,13 +722,13 @@
               camera2D.right  =  halfH * aspect;
               camera2D.top    =  halfH;
               camera2D.bottom = -halfH;
-              base2DhalfH     =  halfH;
+              state.base2DhalfH     =  halfH;
               camera2D.updateProjectionMatrix();
             }
             update2DCamera();
             showFeedback('2D view reset');
           } else {
-            const target = importedModel || siteBoundaryLine;
+            const target = state.importedModel || state.siteBoundaryLine;
             if (target) fit3DCamera(new THREE.Box3().setFromObject(target));
             else { camera3D.position.set(100, 100, 100); controls3D.target.set(0,0,0); controls3D.update(); }
             showFeedback('3D view reset');
@@ -1003,12 +748,12 @@
 
     document.querySelectorAll('.mode-context-item').forEach(item => {
       item.addEventListener('click', () => {
-        canvasMode = item.dataset.canvas;
+        state.canvasMode = item.dataset.canvas;
         document.querySelectorAll('.mode-context-item').forEach(i =>
-          i.classList.toggle('active', i.dataset.canvas === canvasMode));
+          i.classList.toggle('active', i.dataset.canvas === state.canvasMode));
         menu2D.style.display = 'none';
-        if (currentMode === '2d' && selectedSurface) switchMode('2d');
-        showFeedback(`2D mode: ${canvasMode === 'ortho' ? 'Ortho (standard viewpoints)' : 'Surface (normal-aligned)'}`);
+        if (state.currentMode === '2d' && state.selectedSurface) switchMode('2d');
+        showFeedback(`2D mode: ${state.canvasMode === 'ortho' ? 'Ortho (standard viewpoints)' : 'Surface (normal-aligned)'}`);
       });
     });
 
@@ -1027,28 +772,6 @@
     let suppressResize = false;
     let resizeRAF = null;
 
-    function resizeToContainer() {
-      if (suppressResize) return;
-      if (resizeRAF) cancelAnimationFrame(resizeRAF);
-      resizeRAF = requestAnimationFrame(() => {
-        resizeRAF = null;
-        const w = container.clientWidth  || 1;
-        const h = container.clientHeight || 1;
-        renderer.setSize(w, h, false);
-        camera3D.aspect = w / h;
-        camera3D.updateProjectionMatrix();
-        if (siteBoundaryLine) {
-          fit2DCamera(new THREE.Box3().setFromObject(siteBoundaryLine));
-        } else {
-          const aspect = w / h;
-          const halfH  = base2DhalfH || 50;
-          camera2D.left   = -halfH * aspect;
-          camera2D.right  =  halfH * aspect;
-          camera2D.updateProjectionMatrix();
-          update2DCamera();
-        }
-      });
-    }
     new ResizeObserver(resizeToContainer).observe(container);
     requestAnimationFrame(() => requestAnimationFrame(resizeToContainer));
 
@@ -1082,7 +805,7 @@
 
       renderer.render(scene, camera);
       updateSitePinDOM();
-      if (currentMode === '3d' && isGizmo3DVisible()) {
+      if (state.currentMode === '3d' && isGizmo3DVisible()) {
         renderer._compassMainScene = scene; // expose for renderCompassGizmo
         renderCompassGizmo();
       }
@@ -1110,92 +833,6 @@
     /* ============================================================
        LOT BOUNDARY PANEL — appears in right panel after DXF import
     ============================================================ */
-    function buildBoundaryPanel(wgs84Bounds, hasExisting = false) {
-      const existing = document.getElementById('boundary-section');
-      if (existing) existing.remove();
-
-      const section = document.createElement('div');
-      section.id        = 'boundary-section';
-      section.className = 'property-section';
-      section.innerHTML = '<h4>Lot Boundary</h4>';
-
-      const row = document.createElement('div');
-      row.className = 'info-row';
-
-      if (wgs84Bounds) {
-        const info = document.createElement('div');
-        info.style.cssText = 'font-size:11px; color:var(--text-secondary); margin-bottom:8px;';
-        info.textContent = `Site centred at ${wgs84Bounds.sw.lat.toFixed(5)}\u00b0, `
-          + `${wgs84Bounds.sw.lng.toFixed(5)}\u00b0`;
-        row.appendChild(info);
-      }
-
-      const btn = document.createElement('button');
-      btn.id = 'draw-boundary-btn';
-      btn.textContent = hasExisting ? '\u2713 Lot Boundary \u2014 Re-draw\u2026' : 'Draw Lot Boundary\u2026';
-      btn.style.cssText = `
-        width:100%; padding:7px 12px; font-size:12px; cursor:pointer;
-        background:${hasExisting ? 'var(--accent-dark,#2d6b2d)' : 'var(--accent-mid,#4a8a4a)'}; color:#fff; border:none;
-        border-radius:4px; text-align:left;`;
-      btn.addEventListener('click', () => {
-        if (!wgs84Bounds) {
-          showFeedback('No UTM coordinates \u2014 re-import with UTM values to use boundary picker');
-          return;
-        }
-        openBoundaryPicker(wgs84Bounds, async (geojson) => {
-          try {
-            await addBoundaryToGPR(geojson);
-            renderLotBoundary(geojson);
-            btn.textContent = '\u2713 Lot Boundary saved \u2014 Re-draw\u2026';
-            btn.style.background = 'var(--accent-dark,#2d6b2d)';
-            showFeedback('Lot boundary saved to project');
-            // ── Update Supabase repository with boundary ───────────────
-            const anchor = getRealWorldAnchor();
-            const blob   = await getActiveGPRBlob();
-            if (blob && anchor) {
-              saveProject(blob, {
-                site_name:    document.title || 'GPR Project',
-                has_boundary: true,
-                wgs84_lat:    anchor.lat,
-                wgs84_lng:    anchor.lng,
-              }).catch(e => console.warn('[GPR] Supabase boundary update failed:', e));
-            }
-          } catch (err) {
-            console.error('[GPR] boundary save failed:', err);
-            showFeedback('Failed to save boundary: ' + err.message);
-          }
-        });
-      });
-
-      row.appendChild(btn);
-
-      // Download button
-      const dlBtn = document.createElement('button');
-      dlBtn.textContent = '\u2913 Download .gpr';
-      dlBtn.style.cssText = `
-        width:100%; margin-top:6px; padding:5px 12px; font-size:11px; cursor:pointer;
-        background:none; color:var(--text-secondary); border:1px solid var(--chrome-border);
-        border-radius:4px; text-align:left;`;
-      dlBtn.addEventListener('click', async () => {
-        try {
-          const siteName = document.title || 'project';
-          await downloadGPR(siteName);
-        } catch (err) {
-          showFeedback('Download failed: ' + err.message);
-        }
-      });
-      row.appendChild(dlBtn);
-
-      section.appendChild(row);
-
-      const layerSection = document.getElementById('cadmapper-layer-section');
-      const panelContent = document.querySelector('#right-panel .panel-content');
-      if (layerSection && panelContent) {
-        panelContent.insertBefore(section, layerSection.nextSibling);
-      } else if (panelContent) {
-        panelContent.appendChild(section);
-      }
-    }
 
 
 
@@ -1203,49 +840,49 @@
        CLEAR SITE
     ============================================================ */
     document.getElementById('clearSiteBtn').addEventListener('click', () => {
-      if (siteBoundaryLine) {
-        scene.remove(siteBoundaryLine);
-        siteBoundaryLine.geometry.dispose();
-        siteBoundaryLine = null;
+      if (state.siteBoundaryLine) {
+        scene.remove(state.siteBoundaryLine);
+        state.siteBoundaryLine.geometry.dispose();
+        state.siteBoundaryLine = null;
       }
-      if (siteSurface) {
-        scene.remove(siteSurface);
-        siteSurface.geometry.dispose();
-        siteSurface = null;
+      if (state.siteSurface) {
+        scene.remove(state.siteSurface);
+        state.siteSurface.geometry.dispose();
+        state.siteSurface = null;
       }
-      if (sitePinGroup) {
-        scene.remove(sitePinGroup);
-        sitePinGroup.traverse(c => { c.geometry?.dispose(); c.material?.dispose(); });
-        sitePinGroup = null;
+      if (state.sitePinGroup) {
+        scene.remove(state.sitePinGroup);
+        state.sitePinGroup.traverse(c => { c.geometry?.dispose(); c.material?.dispose(); });
+        state.sitePinGroup = null;
       }
       document.getElementById('site-pin-dom')?.remove();
-      sitePinDom = null;
-      sitePinWorldPos = null;
-      if (importedModel) {
-        scene.remove(importedModel);
+      state.sitePinDom = null;
+      state.sitePinWorldPos = null;
+      if (state.importedModel) {
+        scene.remove(state.importedModel);
         scene.remove(edgeGroup);
         while (edgeGroup.children.length) {
           const c = edgeGroup.children[0];
           c.geometry.dispose();
           edgeGroup.remove(c);
         }
-        importedModel = null;
+        state.importedModel = null;
       }
-      if (terrainMesh) {
-        scene.remove(terrainMesh);
-        terrainMesh.geometry.dispose();
-        terrainMesh = null;
+      if (state.terrainMesh) {
+        scene.remove(state.terrainMesh);
+        state.terrainMesh.geometry.dispose();
+        state.terrainMesh = null;
       }
-      if (cadmapperGroup) {
-        scene.remove(cadmapperGroup);
-        cadmapperGroup.traverse(c => { c.geometry?.dispose(); c.material?.dispose(); });
-        cadmapperGroup = null;
+      if (state.cadmapperGroup) {
+        scene.remove(state.cadmapperGroup);
+        state.cadmapperGroup.traverse(c => { c.geometry?.dispose(); c.material?.dispose(); });
+        state.cadmapperGroup = null;
         document.getElementById('cadmapper-layer-section')?.remove();
       }
       clearMapTiles();
-      surfaces        = [];
-      hoveredSurface  = null;
-      selectedSurface = null;
+      state.surfaces        = [];
+      state.hoveredSurface  = null;
+      state.selectedSurface = null;
       siteAreaM2      = 0;
       clearSurfaceCanvasOutline();
 
@@ -1257,8 +894,8 @@
       document.getElementById('gpr-section').style.display              = 'none';
       document.getElementById('plant-schedule-section').style.display   = 'none';
       document.getElementById('empty-props').style.display              = 'block';
-      document.getElementById('section-surfaces').style.display      = 'none';
-      document.getElementById('surfaces-list').innerHTML              = '';
+      document.getElementById('section-state.surfaces').style.display      = 'none';
+      document.getElementById('state.surfaces-list').innerHTML              = '';
       document.getElementById('gpr-value').textContent               = '\u2014';
       document.getElementById('boundary-section')?.remove();
       clearLotBoundary();
@@ -1269,63 +906,8 @@
        LOT BOUNDARY — REAL WORLD scene rendering
        Converts WGS84 GeoJSON polygon → Three.js line in scene space
     ============================================================ */
-    function clearLotBoundary() {
-      if (lotBoundaryGroup) {
-        scene.remove(lotBoundaryGroup);
-        lotBoundaryGroup.traverse(c => { c.geometry?.dispose(); c.material?.dispose(); });
-        lotBoundaryGroup = null;
-      }
-      document.getElementById('lot-boundary-layer-row')?.remove();
-    }
 
-    function renderLotBoundary(boundaryGeojson) {
-      clearLotBoundary();
-      if (!boundaryGeojson?.geometry?.coordinates?.[0]) return;
 
-      const ring   = boundaryGeojson.geometry.coordinates[0];
-      const pts    = ring.map(([lng, lat]) => {
-        const sc = wgs84ToScene(lat, lng);
-        return sc ? new THREE.Vector3(sc.x, 0.15, sc.z) : null;
-      }).filter(Boolean);
-
-      if (pts.length < 3) return;
-      pts.push(pts[0]);   // close the ring
-
-      const geom = new THREE.BufferGeometry().setFromPoints(pts);
-      const mat  = new THREE.LineBasicMaterial({ color: 0xff6600, linewidth: 2 });
-      lotBoundaryGroup = new THREE.Group();
-      lotBoundaryGroup.name = 'lot-boundary';
-      lotBoundaryGroup.add(new THREE.Line(geom, mat));
-      scene.add(lotBoundaryGroup);
-
-      // Add to Properties panel under Site Context
-      buildLotBoundaryLayerRow();
-    }
-
-    function buildLotBoundaryLayerRow() {
-      const existing = document.getElementById('lot-boundary-layer-row');
-      if (existing) existing.remove();
-
-      const section = document.getElementById('cadmapper-layer-section');
-      if (!section) return;
-
-      const row = document.createElement('div');
-      row.id        = 'lot-boundary-layer-row';
-      row.className = 'info-row';
-      const label = document.createElement('label');
-      label.style.cssText = 'display:flex;align-items:center;gap:8px;cursor:pointer;width:100%;';
-      const cb = document.createElement('input');
-      cb.type = 'checkbox'; cb.checked = true;
-      cb.style.cssText = 'accent-color:var(--accent-mid,#4a8a4a);';
-      cb.addEventListener('change', () => { if (lotBoundaryGroup) lotBoundaryGroup.visible = cb.checked; });
-      const dot = document.createElement('span');
-      dot.style.cssText = 'width:8px;height:8px;border-radius:50%;flex-shrink:0;background:#ff6600;';
-      const name = document.createElement('span');
-      name.style.cssText = 'flex:1;font-size:12px;'; name.textContent = 'Google Lot Boundary';
-      label.append(cb, dot, name);
-      row.appendChild(label);
-      section.appendChild(row);
-    }
 
     /* ============================================================
        OPEN GPR FILE — Recent Projects modal
@@ -1361,31 +943,31 @@
         ]);
         const layerGroups = parseCadmapperDXF(dxfText, allLayers, THREE);
         if (layerGroups && Object.keys(layerGroups).length) {
-          if (cadmapperGroup) {
-            scene.remove(cadmapperGroup);
-            cadmapperGroup.traverse(c => { c.geometry?.dispose(); c.material?.dispose(); });
-            cadmapperGroup = null;
+          if (state.cadmapperGroup) {
+            scene.remove(state.cadmapperGroup);
+            state.cadmapperGroup.traverse(c => { c.geometry?.dispose(); c.material?.dispose(); });
+            state.cadmapperGroup = null;
           }
-          cadmapperGroup = new THREE.Group();
-          cadmapperGroup.name = 'cadmapper-context';
-          Object.values(layerGroups).forEach(g => cadmapperGroup.add(g));
+          state.cadmapperGroup = new THREE.Group();
+          state.cadmapperGroup.name = 'cadmapper-context';
+          Object.values(layerGroups).forEach(g => state.cadmapperGroup.add(g));
           const offX = reference.scene_offset_x ?? 0;
           const offZ = reference.scene_offset_z ?? 0;
-          cadmapperGroup.children.forEach(child => {
+          state.cadmapperGroup.children.forEach(child => {
             child.position.x -= offX;
             child.position.z -= offZ;
           });
-          const floorBox = new THREE.Box3().setFromObject(cadmapperGroup);
-          cadmapperGroup.children.forEach(child => { child.position.y -= floorBox.min.y; });
-          scene.add(cadmapperGroup);
+          const floorBox = new THREE.Box3().setFromObject(state.cadmapperGroup);
+          state.cadmapperGroup.children.forEach(child => { child.position.y -= floorBox.min.y; });
+          scene.add(state.cadmapperGroup);
           const size = new THREE.Vector3();
-          new THREE.Box3().setFromObject(cadmapperGroup).getSize(size);
+          new THREE.Box3().setFromObject(state.cadmapperGroup).getSize(size);
           updateSceneHelpers(Math.max(size.x, size.z));
           designGridManager.initHorizontal(
             design?.grid_spacing_m ?? 100, design?.minor_divisions ?? 0,
             5000, new THREE.Vector3(0, 0, 0)
           );
-          fit3DCamera(new THREE.Box3().setFromObject(cadmapperGroup));
+          fit3DCamera(new THREE.Box3().setFromObject(state.cadmapperGroup));
           switchMode('3d');
           document.getElementById('empty-props').style.display  = 'none';
           document.getElementById('clearSiteBtn').style.display = 'block';
@@ -1406,16 +988,16 @@
        VIEW CONTROLS
     ============================================================ */
     document.getElementById('fitSiteBtn').addEventListener('click', () => {
-      const target = importedModel || siteBoundaryLine;
+      const target = state.importedModel || state.siteBoundaryLine;
       if (!target) { showFeedback('No model or site loaded'); return; }
       const box = new THREE.Box3().setFromObject(target);
-      if (currentMode === '2d') fit2DCamera(box); else fit3DCamera(box);
+      if (state.currentMode === '2d') fit2DCamera(box); else fit3DCamera(box);
       showFeedback('Fitted to model');
     });
 
     document.getElementById('resetCameraBtn').addEventListener('click', () => {
-      if (currentMode === '2d') {
-        pan2D.x = 0; pan2D.z = 0; zoom2D = 1;
+      if (state.currentMode === '2d') {
+        pan2D.x = 0; pan2D.z = 0; state.zoom2D = 1;
         update2DCamera();
       } else {
         camera3D.position.set(100, 100, 100);
@@ -1472,290 +1054,21 @@
       .catch(err => console.warn('Plant library not loaded:', err));
 
     // ── GPR: Σ(canopyArea × LAI) / site_area ────────────────────
-    function recalcGPR() {
-      const gprEl     = document.getElementById('gpr-value');
-      const numEl     = document.getElementById('gpr-numerator');
-      const breakRow  = document.getElementById('gpr-breakdown-row');
-      const targetEl  = document.getElementById('gpr-target');
-      const resultRow = document.querySelector('.gpr-result');
-      if (!gprEl) return;
 
-      let numerator = 0;
-      surfaces.forEach(s => {
-        (s.plants || []).forEach(inst => {
-          const sp = plantDb.find(p => p.id === inst.speciesId);
-          if (sp && inst.canopyArea > 0) numerator += inst.canopyArea * sp.lai;
-        });
-      });
-
-      let denom = siteAreaM2;
-      if (!denom) {
-        denom = surfaces.filter(s => s.type === 'ground').reduce((acc, s) => acc + s.area, 0);
-      }
-
-      if (denom <= 0 || numerator === 0) {
-        gprEl.textContent = '\u2014';
-        if (numEl)    numEl.textContent = '\u2014';
-        if (breakRow) breakRow.style.display = 'none';
-        if (resultRow) resultRow.classList.remove('over-target', 'under-target');
-        updateClearBtn();
-        return;
-      }
-
-      const gpr = numerator / denom;
-      gprEl.textContent = gpr.toFixed(2);
-      if (numEl)    numEl.textContent = numerator.toFixed(1) + ' m\u00b2';
-      if (breakRow) breakRow.style.display = '';
-
-      const target = parseFloat(targetEl?.value);
-      if (!isNaN(target) && target > 0 && resultRow) {
-        resultRow.classList.toggle('over-target',  gpr >= target);
-        resultRow.classList.toggle('under-target', gpr < target);
-      }
-      updateClearBtn();
-    }
-
-    function updateClearBtn() {
-      const anyPlanted = surfaces.some(s => (s.plants || []).length > 0);
-      const clearBtn = document.getElementById('clearPlantsBtn');
-      if (clearBtn) clearBtn.disabled = !anyPlanted;
-    }
 
     // ── Add / remove plant instances ───────────────────────────
-    function addPlantInstance(surface, species, canopyArea) {
-      if (!surface.plants) surface.plants = [];
-      const inst = { instanceId: ++_instanceCounter, speciesId: species.id, canopyArea };
-      surface.plants.push(inst);
-      updateSurfaceListTag(surface);
-      renderSurfacePlantSchedule(surface);
-      recalcGPR();
-      showFeedback(`Added ${species.common} \u2014 ${canopyArea} m\u00b2, LAI ${species.lai}`);
-    }
 
-    function removePlantInstance(surface, instanceId) {
-      if (!surface.plants) return;
-      surface.plants = surface.plants.filter(i => i.instanceId !== instanceId);
-      updateSurfaceListTag(surface);
-      renderSurfacePlantSchedule(surface);
-      recalcGPR();
-      showFeedback('Plant instance removed');
-    }
 
-    function updateInstanceCanopyArea(surface, instanceId, newArea) {
-      const inst = (surface.plants || []).find(i => i.instanceId === instanceId);
-      if (inst) { inst.canopyArea = newArea; recalcGPR(); }
-    }
 
     // ── Surface list badge: shows plant count ────────────────────
-    function updateSurfaceListTag(surface) {
-      const item = document.querySelector(`.surface-item[data-surface-id="${surface.id}"]`);
-      if (!item) return;
-      item.querySelector('.surface-plant-tag')?.remove();
-      const count = (surface.plants || []).length;
-      if (count > 0) {
-        const tag = document.createElement('span');
-        tag.className   = 'surface-plant-tag';
-        tag.textContent = count + (count === 1 ? ' plant' : ' plants');
-        item.appendChild(tag);
-      }
-    }
 
     // ── Plant schedule table in right panel ────────────────────
-    function renderSurfacePlantSchedule(surface) {
-      const schedSection = document.getElementById('plant-schedule-section');
-      const listEl       = document.getElementById('surf-plant-list');
-      const countEl      = document.getElementById('surf-plant-count');
-      if (!schedSection || !listEl) return;
-
-      if (!surface) { schedSection.style.display = 'none'; return; }
-
-      schedSection.style.display = 'block';
-      const plants = surface.plants || [];
-      if (countEl) countEl.textContent = plants.length ? `(${plants.length})` : '';
-
-      listEl.innerHTML = '';
-
-      if (!plants.length) {
-        listEl.innerHTML = '<p style="font-size:11px;color:var(--text-secondary,#888);padding:4px 0">No plants on this surface. Click \u201cAdd Plant\u2026\u201d below.</p>';
-        return;
-      }
-
-      plants.forEach(inst => {
-        const sp = plantDb.find(p => p.id === inst.speciesId);
-        if (!sp) return;
-
-        const row = document.createElement('div');
-        row.style.cssText = 'display:flex;align-items:center;gap:6px;padding:5px 0;border-bottom:1px solid var(--chrome-border,#3a3a3a)';
-
-        const nameSpan = document.createElement('span');
-        nameSpan.style.cssText = 'flex:1;min-width:0;font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap';
-        nameSpan.title = sp.scientific;
-        nameSpan.textContent = sp.common;
-
-        const laiSpan = document.createElement('span');
-        laiSpan.style.cssText = 'font-size:10px;color:var(--accent-light,#7fc47f);flex-shrink:0';
-        laiSpan.textContent = `LAI ${sp.lai}`;
-
-        const areaInput = document.createElement('input');
-        areaInput.type  = 'number';
-        areaInput.value = inst.canopyArea;
-        areaInput.min   = '0';
-        areaInput.step  = '0.1';
-        areaInput.title = 'Canopy area (m\u00b2)';
-        areaInput.style.cssText = 'width:52px;font-size:11px;background:var(--chrome-input,#1a1a1a);border:1px solid var(--chrome-border,#444);border-radius:3px;color:var(--text-primary,#e8e8e8);padding:2px 4px;text-align:right';
-        areaInput.addEventListener('change', () => {
-          const v = parseFloat(areaInput.value);
-          if (!isNaN(v) && v >= 0) updateInstanceCanopyArea(surface, inst.instanceId, v);
-        });
-
-        const m2Label = document.createElement('span');
-        m2Label.style.cssText = 'font-size:10px;color:var(--text-secondary,#888);flex-shrink:0';
-        m2Label.textContent = 'm\u00b2';
-
-        const removeBtn = document.createElement('button');
-        removeBtn.title = 'Remove';
-        removeBtn.style.cssText = 'background:none;border:none;color:var(--text-secondary,#888);cursor:pointer;font-size:14px;line-height:1;padding:0 2px;flex-shrink:0';
-        removeBtn.textContent = '\u00d7';
-        removeBtn.addEventListener('click', () => removePlantInstance(surface, inst.instanceId));
-        removeBtn.addEventListener('mouseenter', () => removeBtn.style.color = '#cc4444');
-        removeBtn.addEventListener('mouseleave', () => removeBtn.style.color = '');
-
-        row.append(nameSpan, laiSpan, areaInput, m2Label, removeBtn);
-        listEl.appendChild(row);
-      });
-    }
 
     // ── Build plant list in modal ──────────────────────────────
-    function renderPlantList() {
-      const listEl   = document.getElementById('plant-list');
-      const query    = (document.getElementById('plant-search')?.value || '').toLowerCase();
-      const filter   = document.getElementById('plant-filter')?.value || 'all';
-      const surfType = selectedSurface?.type || null;
 
-      const matches = plantDb.filter(p => {
-        const typeOk = filter === 'all'    ? true
-                     : filter === 'bamboo' ? p.category === 'Bamboo'
-                     : p.surface_types.includes(filter);
-        const searchOk = !query
-          || p.common.toLowerCase().includes(query)
-          || p.scientific.toLowerCase().includes(query)
-          || p.category.toLowerCase().includes(query);
-        return typeOk && searchOk;
-      });
-
-      if (surfType) {
-        matches.sort((a, b) => {
-          const aOk = a.surface_types.includes(surfType) ? 0 : 1;
-          const bOk = b.surface_types.includes(surfType) ? 0 : 1;
-          if (aOk !== bOk) return aOk - bOk;
-          return b.lai - a.lai;
-        });
-      } else {
-        matches.sort((a, b) => b.lai - a.lai);
-      }
-
-      listEl.innerHTML = '';
-
-      if (!matches.length) {
-        listEl.innerHTML = '<p style="text-align:center;color:var(--text-secondary,#888);padding:20px;font-size:12px">No species found</p>';
-        refreshModalStatus();
-        return;
-      }
-
-      matches.forEach(p => {
-        const compatible = surfType ? p.surface_types.includes(surfType) : true;
-        const srcClass   = p.source.includes('Singapore') ? 'field'
-                         : p.source.includes('ORNL')      ? 'ornl' : 'lit';
-        const srcLabel   = p.source.includes('Singapore') ? 'Field'
-                         : p.source.includes('ORNL')      ? 'ORNL' : 'Lit';
-        const isSelected = selectedPlant && selectedPlant.id === p.id;
-
-        const div = document.createElement('div');
-        div.className = 'plant-item' + (isSelected ? ' selected-plant' : '');
-        div.style.opacity = (!surfType || compatible) ? '1' : '0.4';
-        div.innerHTML = `
-          <span class="plant-lai-badge">${p.lai.toFixed(1)}</span>
-          <span class="plant-names">
-            <div class="plant-common">${p.common}</div>
-            <div class="plant-sci">${p.scientific}</div>
-            <div class="plant-cat">${p.category}</div>
-          </span>
-          <span class="plant-src-badge ${srcClass}">${srcLabel}</span>`;
-
-        div.addEventListener('click', () => {
-          selectedPlant = p;
-          document.querySelectorAll('.plant-item').forEach(el => el.classList.remove('selected-plant'));
-          div.classList.add('selected-plant');
-          refreshModalStatus();
-        });
-        listEl.appendChild(div);
-      });
-
-      refreshModalStatus();
-    }
-
-    function refreshModalStatus() {
-      const statusEl  = document.getElementById('plant-modal-status');
-      const assignBtn = document.getElementById('plant-assign-btn');
-      if (!statusEl) return;
-
-      if (!selectedSurface) {
-        statusEl.textContent = 'Select a surface first.';
-        if (assignBtn) assignBtn.disabled = true;
-        return;
-      }
-
-      const surfType   = selectedSurface.type;
-      const compatible = selectedPlant ? selectedPlant.surface_types.includes(surfType) : false;
-
-      if (selectedPlant) {
-        // Check substrate compatibility
-        const subMm    = selectedSurface.substrate_mm;
-        const minSub   = selectedPlant.size?.min_substrate_mm;
-        const subWarn  = subMm && minSub && subMm < minSub
-          ? ` ⚠ Needs ≥${minSub}mm substrate (surface has ${subMm}mm)`
-          : '';
-        const limits   = radiusLimits(selectedPlant, selectedSurface);
-        const capWarn  = limits.capLabel && !subWarn ? ` — capped at ${limits.max}m radius` : '';
-
-        statusEl.textContent = compatible
-          ? `Add ${selectedPlant.common} (LAI ${selectedPlant.lai}) to ${surfType}${subWarn || capWarn}`
-          : `${selectedPlant.common} is not rated for ${surfType} surfaces`;
-        statusEl.style.color = subWarn ? '#e8a040' : '';
-        if (assignBtn) assignBtn.disabled = !compatible;
-      } else {
-        statusEl.textContent = `${surfType} surface — select a species above`;
-        statusEl.style.color = '';
-        if (assignBtn) assignBtn.disabled = true;
-      }
-    }
 
     // ── Open / close modal ─────────────────────────────────────
-    function openPlantModal() {
-      if (!plantDb.length) {
-        showFeedback('Plant library not loaded \u2014 check browser console');
-        return;
-      }
-      if (!selectedSurface) {
-        showFeedback('Select a surface first, then click Add Plant');
-        return;
-      }
-      plantModalOpen = true;
-      selectedPlant  = null;
-      document.getElementById('plant-modal-overlay').classList.add('open');
-      document.getElementById('plant-search').value = '';
-      const filterEl = document.getElementById('plant-filter');
-      if (filterEl) filterEl.value = selectedSurface.type;
-      renderPlantList();
-      document.getElementById('plant-search').focus();
-      showFeedback('Plant Library \u2014 select a species to add', 0);
-    }
 
-    function closePlantModal() {
-      plantModalOpen = false;
-      selectedPlant  = null;
-      document.getElementById('plant-modal-overlay').classList.remove('open');
-    }
 
     // ── Modal bindings ─────────────────────────────────────────
     document.getElementById('plant-modal-close').addEventListener('click', closePlantModal);
@@ -1781,14 +1094,14 @@
 
     // ── Substrate depth input ─────────────────────────────────
     document.getElementById('surf-substrate')?.addEventListener('change', e => {
-      if (!selectedSurface) return;
+      if (!state.selectedSurface) return;
       const v = parseInt(e.target.value);
-      selectedSurface.substrate_mm = (!v || isNaN(v)) ? null : v;
+      state.selectedSurface.substrate_mm = (!v || isNaN(v)) ? null : v;
 
       // Show cap label
       const capEl = document.getElementById('surf-substrate-cap');
       if (capEl) {
-        const label = substrateCapLabel(selectedSurface.substrate_mm);
+        const label = substrateCapLabel(state.selectedSurface.substrate_mm);
         if (label) {
           capEl.textContent = label;
           capEl.style.display = '';
@@ -1810,62 +1123,14 @@
     ============================================================ */
 
     // ── Placement type by category ─────────────────────────────
-    function placementTypeForCategory(cat) {
-      if (!cat) return 'circle';
-      const c = cat.toLowerCase();
-      if (c.includes('tree') || c.includes('shrub') || c.includes('bamboo') || c.includes('palm')) return 'circle';
-      return 'polygon';
-    }
 
     // ── Substrate cap lookup ───────────────────────────────────
     // Returns max canopy radius allowed for a given substrate depth (mm)
     // Uses the substrate_caps table from plants_free.json
     let _substrateCapTable = null;
-    function substrateCapRadius(depth_mm) {
-      if (!depth_mm || depth_mm <= 0) return Infinity;
-      const table = _substrateCapTable;
-      if (!table) return Infinity;
-      // Find first entry where depth_mm <= cap threshold
-      for (const cap of table) {
-        if (depth_mm <= cap.depth_mm) return cap.max_radius_m;
-      }
-      return Infinity;
-    }
-    function substrateCapLabel(depth_mm) {
-      if (!depth_mm || depth_mm <= 0) return null;
-      const table = _substrateCapTable;
-      if (!table) return null;
-      for (const cap of table) {
-        if (depth_mm <= cap.depth_mm) return cap.label;
-      }
-      return null;
-    }
 
     // ── Radius limits: species data + substrate cap ────────────
     // Returns { min, max, def } in metres
-    function radiusLimits(species, surface) {
-      // 1. Species size data (from JSON)
-      const sz = species?.size;
-      const spMin = sz?.canopy_radius_min_m  ?? 0.5;
-      const spMax = sz?.canopy_radius_max_m  ?? 15;
-      const spDef = sz?.canopy_radius_typical_m ?? 3;
-
-      // 2. Substrate cap from surface (if set)
-      const subMm   = surface?.substrate_mm;
-      const capMax  = substrateCapRadius(subMm);
-
-      // 3. Final max = min of species max and installation cap
-      const finalMax = Math.min(spMax === 999 ? 50 : spMax, capMax === Infinity ? 50 : capMax);
-      const finalDef = Math.min(spDef === 999 ? 3 : spDef, finalMax);
-
-      return {
-        min: spMin,
-        max: finalMax,
-        def: finalDef,
-        capLabel: subMm ? substrateCapLabel(subMm) : null,
-        substrateOk: !sz?.min_substrate_mm || !subMm || subMm >= sz.min_substrate_mm
-      };
-    }
 
     // ── State ──────────────────────────────────────────────────
     //  mode: 'idle' | 'placing_circle' | 'placing_polygon' | 'editing'
@@ -1895,154 +1160,34 @@
 
     // ── Coordinate helpers ─────────────────────────────────────
     // Get surface bounding box centre (world space)
-    function getSurfaceCentre(surface) {
-      surface.mesh.geometry.computeBoundingBox();
-      const box = new THREE.Box3().copy(surface.mesh.geometry.boundingBox).applyMatrix4(surface.mesh.matrixWorld);
-      const c = new THREE.Vector3();
-      box.getCenter(c);
-      return c;
-    }
 
     // Raycast screen NDC onto surface mesh → world point
-    function raycastSurface(ndc, surface) {
-      const r = new THREE.Raycaster();
-      r.setFromCamera(ndc, camera2D);
-      const hits = r.intersectObject(surface.mesh, false);
-      return hits.length ? hits[0].point : null;
-    }
 
     // World point → surface-local UV (metres from centre)
-    function worldToSurfaceUV(worldPt, surface) {
-      const n   = surface.worldNormal.clone().normalize();
-      const isH = Math.abs(n.y) > 0.7;
-      const c   = getSurfaceCentre(surface);
-      if (isH) {
-        return { u: worldPt.x - c.x, v: worldPt.z - c.z };
-      } else {
-        // Wall — use surface tangent axes
-        const up    = new THREE.Vector3(0, 1, 0);
-        const right = new THREE.Vector3().crossVectors(up, n).normalize();
-        return {
-          u: worldPt.clone().sub(c).dot(right),
-          v: worldPt.y - c.y
-        };
-      }
-    }
 
     // Surface UV → world point (on surface plane)
-    function surfaceUVToWorld(u, v, surface) {
-      const n   = surface.worldNormal.clone().normalize();
-      const isH = Math.abs(n.y) > 0.7;
-      const c   = getSurfaceCentre(surface);
-      if (isH) {
-        return new THREE.Vector3(c.x + u, c.y + 0.05, c.z + v);
-      } else {
-        const up    = new THREE.Vector3(0, 1, 0);
-        const right = new THREE.Vector3().crossVectors(up, n).normalize();
-        return c.clone()
-          .addScaledVector(right, u)
-          .addScaledVector(up, v)
-          .addScaledVector(n, 0.05);
-      }
-    }
 
     // ── NDC from mouse event ────────────────────────────────────
-    function canvasNDC(e) {
-      const rect = renderer.domElement.getBoundingClientRect();
-      return new THREE.Vector2(
-         ((e.clientX - rect.left) / rect.width)  * 2 - 1,
-        -((e.clientY - rect.top)  / rect.height) * 2 + 1
-      );
-    }
 
     // ── Start placement after modal ─────────────────────────────
-    function startPlacement(species) {
-      placingSpecies = species;
-      const pType    = placementTypeForCategory(species.category);
-      placementMode  = pType === 'circle' ? 'placing_circle' : 'placing_polygon';
-      placingCircle  = null;
-      placingPoly    = [];
-      clearPreview();
 
-      // Switch to 2D canvas of selected surface
-      switchMode('2d');
-
-      const hint = pType === 'circle'
-        ? 'Click to set centre, drag or click again to set radius'
-        : 'Click to add vertices, double-click or Enter to close polygon';
-      showFeedback(`Placing ${species.common} — ${hint}`, 0);
-      renderer.domElement.style.cursor = 'crosshair';
-    }
-
-    function cancelPlacement() {
-      placementMode   = 'idle';
-      placingSpecies  = null;
-      placingCircle   = null;
-      placingPoly     = [];
-      editingInstance = null;
-      clearPreview();
-      renderer.domElement.style.cursor = '';
-      showFeedback('Ready');
-    }
 
     // ── Preview mesh helpers ────────────────────────────────────
-    function clearPreview() {
-      if (previewMesh) {
-        if (Array.isArray(previewMesh)) {
-          previewMesh.forEach(m => { scene.remove(m); m.geometry?.dispose(); });
-        } else {
-          scene.remove(previewMesh); previewMesh.geometry?.dispose();
-        }
-        previewMesh = null;
-      }
-    }
 
-    function showCirclePreview(cx, cz, radius, surface) {
-      clearPreview();
-      const segs = 48;
-      const pts  = [];
-      for (let i = 0; i <= segs; i++) {
-        const a = (i / segs) * Math.PI * 2;
-        const u = cx + Math.cos(a) * radius;
-        const v = cz + Math.sin(a) * radius;
-        pts.push(surfaceUVToWorld(u, v, surface));
-      }
-      const geom = new THREE.BufferGeometry().setFromPoints(pts);
-      previewMesh = new THREE.Line(geom, PROXY_MAT.previewLine);
-      previewMesh.renderOrder = 10;
-      scene.add(previewMesh);
-    }
 
-    function showPolygonPreview(pts, mouseUV, surface) {
-      clearPreview();
-      const lines = [];
-      if (pts.length >= 2) {
-        const worldPts = pts.map(p => surfaceUVToWorld(p.u, p.v, surface));
-        const geom = new THREE.BufferGeometry().setFromPoints(worldPts);
-        lines.push(new THREE.Line(geom, PROXY_MAT.previewLine));
-      }
-      if (pts.length >= 1 && mouseUV) {
-        const lastW = surfaceUVToWorld(pts[pts.length - 1].u, pts[pts.length - 1].v, surface);
-        const curW  = surfaceUVToWorld(mouseUV.u, mouseUV.v, surface);
-        const g2 = new THREE.BufferGeometry().setFromPoints([lastW, curW]);
-        lines.push(new THREE.Line(g2, PROXY_MAT.previewLine));
-      }
-      lines.forEach(l => { l.renderOrder = 10; scene.add(l); });
-      previewMesh = lines;
-    }
 
     // ── 2D canvas mouse handlers for placement ─────────────────
     let circlePhase = 'none'; // 'none' | 'centre_set'
     let circleCentre = null; // { u, v } surface-local
 
     renderer.domElement.addEventListener('click', e => {
-      if (currentMode !== '2d' || !selectedSurface) return;
+      if (state.currentMode !== '2d' || !state.selectedSurface) return;
       if (placementMode === 'idle') return;
 
       const ndc  = canvasNDC(e);
-      const wPt  = raycastSurface(ndc, selectedSurface);
+      const wPt  = raycastSurface(ndc, state.selectedSurface);
       if (!wPt) return;
-      const uv   = worldToSurfaceUV(wPt, selectedSurface);
+      const uv   = worldToSurfaceUV(wPt, state.selectedSurface);
 
       if (placementMode === 'placing_circle') {
         if (circlePhase === 'none') {
@@ -2052,11 +1197,11 @@
           showFeedback('Centre set — click again to set canopy radius', 0);
         } else {
           // Second click: set radius and place
-          const limits = radiusLimits(placingSpecies, selectedSurface);
+          const limits = radiusLimits(placingSpecies, state.selectedSurface);
           const raw    = Math.hypot(uv.u - circleCentre.u, uv.v - circleCentre.v);
           const radius = Math.min(limits.max, Math.max(limits.min, raw));
           const area   = Math.round(Math.PI * radius * radius * 10) / 10;
-          const inst   = commitCirclePlacement(selectedSurface, placingSpecies, circleCentre, radius, area);
+          const inst   = commitCirclePlacement(state.selectedSurface, placingSpecies, circleCentre, radius, area);
           circleCentre = null;
           circlePhase  = 'none';
           placingSpecies = null;
@@ -2070,17 +1215,17 @@
 
       if (placementMode === 'placing_polygon') {
         placingPoly.push({ u: uv.u, v: uv.v });
-        showPolygonPreview(placingPoly, null, selectedSurface);
+        showPolygonPreview(placingPoly, null, state.selectedSurface);
         showFeedback(`${placingPoly.length} vertices — double-click or Enter to close`, 0);
       }
     });
 
     renderer.domElement.addEventListener('dblclick', e => {
-      if (currentMode !== '2d' || placementMode !== 'placing_polygon') return;
+      if (state.currentMode !== '2d' || placementMode !== 'placing_polygon') return;
       if (placingPoly.length < 3) {
         showFeedback('Need at least 3 points to close a polygon'); return;
       }
-      commitPolygonPlacement(selectedSurface, placingSpecies, [...placingPoly]);
+      commitPolygonPlacement(state.selectedSurface, placingSpecies, [...placingPoly]);
       placingPoly    = [];
       placingSpecies = null;
       placementMode  = 'idle';
@@ -2089,21 +1234,21 @@
     });
 
     renderer.domElement.addEventListener('mousemove', e => {
-      if (currentMode !== '2d' || !selectedSurface) return;
+      if (state.currentMode !== '2d' || !state.selectedSurface) return;
       const ndc = canvasNDC(e);
-      const wPt = raycastSurface(ndc, selectedSurface);
+      const wPt = raycastSurface(ndc, state.selectedSurface);
       if (!wPt) return;
-      const uv  = worldToSurfaceUV(wPt, selectedSurface);
+      const uv  = worldToSurfaceUV(wPt, state.selectedSurface);
 
       if (placementMode === 'placing_circle' && circlePhase === 'centre_set') {
-        const limits = radiusLimits(placingSpecies, selectedSurface);
+        const limits = radiusLimits(placingSpecies, state.selectedSurface);
         const raw    = Math.hypot(uv.u - circleCentre.u, uv.v - circleCentre.v);
         const radius = Math.min(limits.max, Math.max(limits.min, raw || limits.def));
-        showCirclePreview(circleCentre.u, circleCentre.v, radius, selectedSurface);
+        showCirclePreview(circleCentre.u, circleCentre.v, radius, state.selectedSurface);
       }
 
       if (placementMode === 'placing_polygon' && placingPoly.length >= 1) {
-        showPolygonPreview(placingPoly, uv, selectedSurface);
+        showPolygonPreview(placingPoly, uv, state.selectedSurface);
       }
     });
 
@@ -2111,7 +1256,7 @@
     document.addEventListener('keydown', e => {
       if (e.key === 'Enter' && placementMode === 'placing_polygon') {
         if (placingPoly.length >= 3) {
-          commitPolygonPlacement(selectedSurface, placingSpecies, [...placingPoly]);
+          commitPolygonPlacement(state.selectedSurface, placingSpecies, [...placingPoly]);
           placingPoly    = [];
           placingSpecies = null;
           placementMode  = 'idle';
@@ -2127,240 +1272,28 @@
     });
 
     // ── Commit placements ───────────────────────────────────────
-    function commitCirclePlacement(surface, species, centre, radius, area) {
-      if (!surface.plants) surface.plants = [];
-      const inst = {
-        instanceId:  ++_instanceCounter,
-        speciesId:   species.id,
-        canopyArea:  area,
-        placement: {
-          type:    'circle',
-          cx:      centre.u,
-          cz:      centre.v,
-          radius,
-          mesh:    null
-        }
-      };
-      surface.plants.push(inst);
 
-      // Build 3D proxy
-      inst.placement.mesh = buildCircleProxy(inst, surface, species);
-
-      updateSurfaceListTag(surface);
-      renderSurfacePlantSchedule(surface);
-      recalcGPR();
-      return inst;
-    }
-
-    function commitPolygonPlacement(surface, species, polyPts) {
-      const area = polygonArea(polyPts);
-      if (!surface.plants) surface.plants = [];
-      const inst = {
-        instanceId: ++_instanceCounter,
-        speciesId:  species.id,
-        canopyArea: Math.round(area * 10) / 10,
-        placement: {
-          type:   'polygon',
-          points: polyPts,
-          mesh:   null
-        }
-      };
-      surface.plants.push(inst);
-
-      // Build 3D proxy
-      inst.placement.mesh = buildPolygonProxy(inst, surface, species);
-
-      updateSurfaceListTag(surface);
-      renderSurfacePlantSchedule(surface);
-      recalcGPR();
-      showFeedback(`Placed ${species.common} — canopy ${inst.canopyArea} m²`);
-      return inst;
-    }
 
     // ── Polygon area (Shoelace, surface-local coords) ───────────
-    function polygonArea(pts) {
-      let area = 0;
-      for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) {
-        area += (pts[j].u + pts[i].u) * (pts[j].v - pts[i].v);
-      }
-      return Math.abs(area / 2);
-    }
 
     // ── 3D proxy builders ────────────────────────────────────────
-    function proxyMatForCategory(cat) {
-      if (!cat) return PROXY_MAT.tree;
-      const c = cat.toLowerCase();
-      if (c.includes('tree'))  return PROXY_MAT.tree;
-      if (c.includes('shrub')) return PROXY_MAT.shrub;
-      if (c.includes('bamboo') || c.includes('palm')) return PROXY_MAT.bamboo;
-      return PROXY_MAT.polygon;
-    }
 
-    function buildCircleProxy(inst, surface, species) {
-      const { cx, cz, radius } = inst.placement;
-      const worldCentre = surfaceUVToWorld(cx, cz, surface);
-      const cat  = (species.category || '').toLowerCase();
-      const isTree  = cat.includes('tree') || cat.includes('palm');
-      const isShrub = cat.includes('shrub');
-      const group = new THREE.Group();
 
-      if (isTree) {
-        // Canopy sphere
-        const cSphere = new THREE.Mesh(
-          new THREE.SphereGeometry(radius * 0.8, 10, 8),
-          PROXY_MAT.tree.clone()
-        );
-        cSphere.position.set(0, radius * 0.8 + radius * 0.5, 0);
-        group.add(cSphere);
-        // Trunk
-        const trunk = new THREE.Mesh(
-          new THREE.CylinderGeometry(radius * 0.07, radius * 0.1, radius * 1.2, 6),
-          PROXY_MAT.trunk.clone()
-        );
-        trunk.position.set(0, radius * 0.6, 0);
-        group.add(trunk);
-      } else if (isShrub) {
-        const sphere = new THREE.Mesh(
-          new THREE.SphereGeometry(radius, 8, 6),
-          PROXY_MAT.shrub.clone()
-        );
-        sphere.position.set(0, radius * 0.6, 0);
-        group.add(sphere);
-      } else {
-        // Bamboo / palm — cylinder clump
-        const cyl = new THREE.Mesh(
-          new THREE.CylinderGeometry(radius * 0.5, radius * 0.7, radius * 3, 6),
-          PROXY_MAT.bamboo.clone()
-        );
-        cyl.position.set(0, radius * 1.5, 0);
-        group.add(cyl);
-      }
-
-      // Also draw a flat circle on the surface to show canopy footprint
-      const circlePts = [];
-      for (let i = 0; i <= 32; i++) {
-        const a = (i / 32) * Math.PI * 2;
-        circlePts.push(surfaceUVToWorld(cx + Math.cos(a) * radius, cz + Math.sin(a) * radius, surface));
-      }
-      const lineGeom = new THREE.BufferGeometry().setFromPoints(circlePts);
-      const lineLoop  = new THREE.Line(lineGeom, new THREE.LineBasicMaterial({ color: 0x2d7a2d }));
-      lineLoop.renderOrder = 3;
-      scene.add(lineLoop);
-      inst.placement._footprintLine = lineLoop;
-
-      group.position.copy(worldCentre);
-      group.renderOrder = 3;
-      plantProxyGroup.add(group);
-      return group;
-    }
-
-    function buildPolygonProxy(inst, surface, species) {
-      const { points } = inst.placement;
-      if (points.length < 3) return null;
-
-      // Build Three.js ShapeGeometry in surface-local UV space,
-      // then transform each vertex to world space
-      const worldPts = points.map(p => surfaceUVToWorld(p.u, p.v, surface));
-      // Determine a local 2D basis to feed THREE.Shape
-      // For simplicity: use XZ world coords (works for horizontal surfaces)
-      // For walls: project onto the surface tangent plane
-      const n   = surface.worldNormal.clone().normalize();
-      const isH = Math.abs(n.y) > 0.7;
-
-      let shapePts;
-      if (isH) {
-        shapePts = worldPts.map(p => new THREE.Vector2(p.x, p.z));
-      } else {
-        const up    = new THREE.Vector3(0, 1, 0);
-        const right = new THREE.Vector3().crossVectors(up, n).normalize();
-        const c     = getSurfaceCentre(surface);
-        shapePts = worldPts.map(p => {
-          const d = p.clone().sub(c);
-          return new THREE.Vector2(d.dot(right), p.y - c.y);
-        });
-      }
-
-      const shape = new THREE.Shape(shapePts);
-      const geom  = new THREE.ShapeGeometry(shape);
-
-      if (isH) {
-        geom.rotateX(-Math.PI / 2);
-      } else {
-        // Orient in wall plane — translate back to world position
-        const c     = getSurfaceCentre(surface);
-        const up    = new THREE.Vector3(0, 1, 0);
-        const right = new THREE.Vector3().crossVectors(up, n).normalize();
-        const pos   = geom.attributes.position;
-        for (let i = 0; i < pos.count; i++) {
-          const u2 = pos.getX(i);
-          const v2 = pos.getY(i);
-          const wp  = c.clone().addScaledVector(right, u2).addScaledVector(up, v2).addScaledVector(n, 0.05);
-          pos.setXYZ(i, wp.x, wp.y, wp.z);
-        }
-        pos.needsUpdate = true;
-      }
-
-      const mat  = proxyMatForCategory(species.category);
-      const mesh = new THREE.Mesh(geom, mat.clone());
-
-      if (isH) {
-        // Translate to world Y
-        const c = getSurfaceCentre(surface);
-        mesh.position.y = c.y + 0.06;
-      }
-
-      mesh.renderOrder = 3;
-      plantProxyGroup.add(mesh);
-
-      // Also draw outline
-      const outlineGeom = new THREE.BufferGeometry().setFromPoints([...worldPts, worldPts[0]]);
-      const outline = new THREE.Line(outlineGeom, new THREE.LineBasicMaterial({ color: 0x2d7a2d }));
-      outline.renderOrder = 4;
-      scene.add(outline);
-      inst.placement._outlineLine = outline;
-
-      return mesh;
-    }
 
     // ── Remove proxy meshes when clearing plants ────────────────
-    function removeProxyForInstance(inst) {
-      if (!inst.placement) return;
-      if (inst.placement.mesh) {
-        plantProxyGroup.remove(inst.placement.mesh);
-        inst.placement.mesh.traverse(c => c.geometry?.dispose());
-      }
-      if (inst.placement._footprintLine) {
-        scene.remove(inst.placement._footprintLine);
-        inst.placement._footprintLine.geometry?.dispose();
-      }
-      if (inst.placement._outlineLine) {
-        scene.remove(inst.placement._outlineLine);
-        inst.placement._outlineLine.geometry?.dispose();
-      }
-    }
 
-    function clearAllProxies() {
-      surfaces.forEach(s => {
-        (s.plants || []).forEach(inst => removeProxyForInstance(inst));
-      });
-      while (plantProxyGroup.children.length) {
-        const c = plantProxyGroup.children[0];
-        c.geometry?.dispose();
-        plantProxyGroup.remove(c);
-      }
-    }
 
     // ── Patch clearPlantsBtn to also clear proxies ──────────────
     // (re-bind — original bind is above, this overrides it)
     document.getElementById('clearPlantsBtn')?.addEventListener('click', () => {
-      const total = surfaces.reduce((acc, s) => acc + (s.plants || []).length, 0);
+      const total = state.surfaces.reduce((acc, s) => acc + (s.plants || []).length, 0);
       if (!total) { showFeedback('No plants assigned'); return; }
-      surfaces.forEach(s => {
+      state.surfaces.forEach(s => {
         (s.plants || []).forEach(inst => removeProxyForInstance(inst));
         s.plants = [];
         updateSurfaceListTag(s);
       });
-      if (selectedSurface) renderSurfacePlantSchedule(selectedSurface);
+      if (state.selectedSurface) renderSurfacePlantSchedule(state.selectedSurface);
       recalcGPR();
       showFeedback(`Cleared ${total} plant instance${total > 1 ? 's' : ''}`);
     });
@@ -2378,7 +1311,7 @@
     // ── Patch modal to trigger placement instead of direct add ──
     // Override the assign button to start placement flow
     document.getElementById('plant-assign-btn')?.addEventListener('click', () => {
-      if (!selectedSurface || !selectedPlant) return;
+      if (!state.selectedSurface || !selectedPlant) return;
       const sp = selectedPlant; // capture before modal close
       closePlantModal();
       startPlacement(sp);
@@ -2459,73 +1392,17 @@
     /* ============================================================
        TOGGLE AXES
     ============================================================ */
-    function toggleAxes() {
-      if (!axesHelper) return;
-      axesHelper.visible = !axesHelper.visible;
-      showFeedback('Axes ' + (axesHelper.visible ? 'on' : 'off'));
-    }
 
     /* ============================================================
        NORTH POINT 2D + 3D — initialise modules
     ============================================================ */
-    initNorthPoint2D(() => ({ currentMode, camera2D, camera3D, controls3D, pan2D, rotate2D }));
-    initNorthPoint3D(() => ({ renderer, camera3D, container, currentMode, showFeedback }));
+    initNorthPoint2D(() => ({ currentMode: state.currentMode, camera2D, camera3D, controls3D, pan2D: state.pan2D, rotate2D: state.rotate2D }));
+    initNorthPoint3D(() => ({ renderer, camera3D, container, currentMode: state.currentMode, showFeedback }));
 
     // Site selection + CADMapper import modules
     // showSitePin: hides orange boundary, adds a Google-style DOM teardrop pin
     // lat/lng = Nominatim geocoded point — placed precisely regardless of polygon centroid
-    function showSitePin(lat, lng) {
-      if (siteBoundaryLine) siteBoundaryLine.visible = false;
 
-      // Clear any previous mesh pin
-      if (sitePinGroup) {
-        scene.remove(sitePinGroup);
-        sitePinGroup.traverse(c => { c.geometry?.dispose(); c.material?.dispose(); });
-        sitePinGroup = null;
-      }
-
-      // Remove any existing DOM pin
-      document.getElementById('site-pin-dom')?.remove();
-
-      // Create DOM teardrop pin
-      sitePinDom = document.createElement('div');
-      sitePinDom.id = 'site-pin-dom';
-      sitePinDom.style.cssText = `
-        position:absolute; pointer-events:none; z-index:10;
-        transform:translate(-50%, -100%);`;
-      sitePinDom.innerHTML = `
-        <svg width="30" height="42" viewBox="0 0 30 42" xmlns="http://www.w3.org/2000/svg">
-          <ellipse cx="15" cy="41" rx="6" ry="2" fill="rgba(0,0,0,0.20)"/>
-          <path d="M15 1 C7.268 1 1 7.268 1 15 C1 24.5 15 41 15 41 C15 41 29 24.5 29 15 C29 7.268 22.732 1 15 1 Z"
-                fill="#1e3d1e" stroke="white" stroke-width="1.2"/>
-          <circle cx="15" cy="15" r="7" fill="white"/>
-          <circle cx="15" cy="15" r="4" fill="#4a7c3f"/>
-        </svg>`;
-      document.getElementById('viewport').appendChild(sitePinDom);
-
-      // Convert Nominatim lat/lng to world coords using the same bbox centre that
-      // drawSiteBoundary used — this places pin at the geocoded address, not polygon centroid
-      if (lat != null && lng != null && window._siteBBoxCenter) {
-        const bc  = window._siteBBoxCenter;
-        const wx  =  (lng - bc.cLon) * Math.cos(bc.cLat * Math.PI / 180) * 111320;
-        const wz  = -(lat - bc.cLat) * 111320;
-        sitePinWorldPos = new THREE.Vector3(wx, 0, wz);
-      } else {
-        sitePinWorldPos = new THREE.Vector3(0, 0, 0);
-      }
-
-      updateSitePinDOM();
-    }
-
-    function updateSitePinDOM() {
-      if (!sitePinDom || !sitePinWorldPos) return;
-      const vec  = sitePinWorldPos.clone().project(camera);
-      const rect = canvas.getBoundingClientRect();
-      const x    = (vec.x *  0.5 + 0.5) * rect.width;
-      const y    = (vec.y * -0.5 + 0.5) * rect.height;
-      sitePinDom.style.left = x + 'px';
-      sitePinDom.style.top  = y + 'px';
-    }
 
     // Initialise the Design Grid Manager (see js/design-grid.js for full docs)
     designGridManager = new DesignGridManager(THREE, scene);
@@ -2536,25 +1413,8 @@
     // Design Grid shows when Design North ≠ 0 (user has defined a design orientation).
     // Only one is visible at any time; the other is hidden.
     // Pass forceMode = '2d' or '3d' to override the current mode check.
-    function updateGridVisibility(forceMode) {
-      const mode      = forceMode ?? currentMode;
-      const inView    = (mode === '2d') && !mapTileGroup;
-      const hasDN     = (getDesignNorthAngle() ?? 0) !== 0;
-      const showDG    = inView && hasDN  && !!designGridManager?.grids?.size;
-      const showCAD   = inView && !showDG;
-      if (gridHelper) gridHelper.visible = showCAD;
-      if (designGridManager) designGridManager.setVisible(showDG);
-    }
     // Legacy alias — any existing call to setGridVisible(false) now hides both;
     // setGridVisible(true) defers to updateGridVisibility.
-    function setGridVisible(v) {
-      if (!v) {
-        if (gridHelper) gridHelper.visible = false;
-        if (designGridManager) designGridManager.setVisible(false);
-      } else {
-        updateGridVisibility();
-      }
-    }
 
     initSiteSelection({ drawSiteBoundary, onSiteSelected: (lat, lng) => showSitePin(lat, lng) });
     initSiteBoundary();
@@ -2563,30 +1423,30 @@
       THREE,
       onLayersLoaded: async (layerGroups, dxfFile) => {
         // Clear existing CADMapper geometry
-        if (cadmapperGroup) {
-          scene.remove(cadmapperGroup);
-          cadmapperGroup.traverse(c => { c.geometry?.dispose(); c.material?.dispose(); });
-          cadmapperGroup = null;
+        if (state.cadmapperGroup) {
+          scene.remove(state.cadmapperGroup);
+          state.cadmapperGroup.traverse(c => { c.geometry?.dispose(); c.material?.dispose(); });
+          state.cadmapperGroup = null;
         }
 
         // Build group, centre it in scene
-        cadmapperGroup = new THREE.Group();
-        cadmapperGroup.name = 'cadmapper-context';
-        Object.values(layerGroups).forEach(g => cadmapperGroup.add(g));
+        state.cadmapperGroup = new THREE.Group();
+        state.cadmapperGroup.name = 'cadmapper-context';
+        Object.values(layerGroups).forEach(g => state.cadmapperGroup.add(g));
 
-        const box    = new THREE.Box3().setFromObject(cadmapperGroup);
+        const box    = new THREE.Box3().setFromObject(state.cadmapperGroup);
         const centre = new THREE.Vector3();
         box.getCenter(centre);
 
-        // Centre by moving children (not the group) so cadmapperGroup stays at
+        // Centre by moving children (not the group) so state.cadmapperGroup stays at
         // world (0,0,0). Rotation in the animation loop then pivots correctly
         // around the scene centre — the DXF's visual centre.
-        cadmapperGroup.children.forEach(child => {
+        state.cadmapperGroup.children.forEach(child => {
           child.position.x -= centre.x;
           child.position.z -= centre.z;
         });
-        const box2 = new THREE.Box3().setFromObject(cadmapperGroup);
-        cadmapperGroup.children.forEach(child => { child.position.y -= box2.min.y; });
+        const box2 = new THREE.Box3().setFromObject(state.cadmapperGroup);
+        state.cadmapperGroup.children.forEach(child => { child.position.y -= box2.min.y; });
 
         // ── REAL WORLD: record scene offset so any scene coord can be
         // converted back to UTM / WGS84 via real-world.js.
@@ -2594,16 +1454,16 @@
 
         // ── REAL WORLD: compute WGS84 bounding box of the DXF for Google Maps picker.
         // finalBox is computed after centering — min/max are scene-space metres.
-        const finalBox = new THREE.Box3().setFromObject(cadmapperGroup);
+        const finalBox = new THREE.Box3().setFromObject(state.cadmapperGroup);
         const wgs84Bounds = hasRealWorldAnchor() ? {
           sw: sceneToWGS84(finalBox.min.x, finalBox.min.z),
           ne: sceneToWGS84(finalBox.max.x, finalBox.max.z),
         } : null;
 
-        scene.add(cadmapperGroup);
+        scene.add(state.cadmapperGroup);
 
         const size = new THREE.Vector3();
-        new THREE.Box3().setFromObject(cadmapperGroup).getSize(size);
+        new THREE.Box3().setFromObject(state.cadmapperGroup).getSize(size);
         const siteSpan = Math.max(size.x, size.z);
         updateSceneHelpers(siteSpan);
 
@@ -2618,7 +1478,7 @@
           dgSpacing, dgMinorDivisions, 5000, new THREE.Vector3(0, 0, 0)
         );
 
-        fit3DCamera(new THREE.Box3().setFromObject(cadmapperGroup));
+        fit3DCamera(new THREE.Box3().setFromObject(state.cadmapperGroup));
         switchMode('3d');
 
         document.getElementById('empty-props').style.display       = 'none';
