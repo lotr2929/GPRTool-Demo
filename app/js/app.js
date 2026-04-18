@@ -33,6 +33,8 @@
       toggleGizmo3D,
       isGizmo3DVisible,
     } from './north-point-3d.js';
+    import { state } from './state.js';
+    import { initUI, showFeedback } from './ui.js';
 
     /* ============================================================
        LOAD HEADER + BODY
@@ -42,24 +44,12 @@
 
     const bodyHTML = await fetch('body.html').then(r => r.text());
     document.getElementById('body-container').innerHTML = bodyHTML;
+    initUI();
 
     /* ============================================================
        HEADER: CLOCK
     ============================================================ */
-    function updateHeaderTime() {
-      const el = document.getElementById('header-datetime');
-      if (!el) return;
-      const now = new Date();
-      const d  = now.getDate();
-      const mo = now.toLocaleDateString('en-GB', { month: 'short' });
-      const y  = now.getFullYear();
-      const hh = String(now.getHours()).padStart(2, '0');
-      const mm = String(now.getMinutes()).padStart(2, '0');
-      const ss = String(now.getSeconds()).padStart(2, '0');
-      el.textContent = `${d} ${mo} ${y}  ${hh}:${mm}:${ss}`;
-    }
     updateHeaderTime();
-    setInterval(updateHeaderTime, 1000);
 
     /* ============================================================
        HEADER: ALARM
@@ -68,71 +58,16 @@
     let alarmInterval = null;
     let isRinging     = false;
 
-    document.getElementById('header-datetime').addEventListener('click', () => {
-      if (isRinging) { stopAlarm(); return; }
-      let popup = document.getElementById('alarm-popup');
-      if (popup) { popup.remove(); return; }
-      popup = document.createElement('div');
-      popup.className = 'alarm-popup';
-      popup.id = 'alarm-popup';
-      popup.innerHTML = `
-        <h4>Set Alarm</h4>
-        <input type="time" id="alarm-time-input" />
-        <button id="set-alarm-btn">Set Alarm</button>
-        <button id="cancel-alarm-btn" style="background:var(--chrome-border);margin-top:4px">Cancel</button>`;
-      document.body.appendChild(popup);
-      const now = new Date();
-      document.getElementById('alarm-time-input').value =
-        `${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`;
-      document.getElementById('set-alarm-btn').addEventListener('click', () => {
-        const t = document.getElementById('alarm-time-input').value;
-        if (t) { setAlarm(t); popup.remove(); }
-      });
-      document.getElementById('cancel-alarm-btn').addEventListener('click', () => {
-        clearAlarm(); popup.remove();
-      });
-    });
+    /* alarm listener -- moved to ui.js */;
 
-    function setAlarm(timeStr) {
-      const [h, m] = timeStr.split(':').map(Number);
-      alarmTime = new Date();
-      alarmTime.setHours(h, m, 0, 0);
-      if (alarmTime <= new Date()) alarmTime.setDate(alarmTime.getDate() + 1);
-      document.getElementById('header-datetime').classList.add('alarm-active');
-      if (alarmInterval) clearInterval(alarmInterval);
-      alarmInterval = setInterval(() => {
-        if (alarmTime && new Date() >= alarmTime) triggerAlarm();
-      }, 1000);
-    }
 
-    function triggerAlarm() {
-      isRinging = true;
-      const el = document.getElementById('header-datetime');
-      el.classList.remove('alarm-active');
-      el.classList.add('alarm-ringing');
-      clearInterval(alarmInterval);
-      alarmInterval = null;
-    }
 
-    function stopAlarm() {
-      isRinging = false;
-      const el = document.getElementById('header-datetime');
-      el.classList.remove('alarm-ringing', 'alarm-active');
-      alarmTime = null;
-      if (alarmInterval) { clearInterval(alarmInterval); alarmInterval = null; }
-    }
 
-    function clearAlarm() {
-      document.getElementById('header-datetime').classList.remove('alarm-active');
-      alarmTime = null;
-      if (alarmInterval) { clearInterval(alarmInterval); alarmInterval = null; }
-    }
 
     /* ============================================================
        COLLAPSIBLE SECTIONS + KEYBOARD SHORTCUTS
     ============================================================ */
-    document.querySelectorAll('.section-header').forEach(hdr =>
-      hdr.addEventListener('click', () => hdr.closest('.command-section').classList.toggle('collapsed')));
+    /* section collapse -- moved to ui.js */
 
     document.addEventListener('keydown', e => {
       const ctrl = e.ctrlKey || e.metaKey;
@@ -2062,13 +1997,6 @@
     /* ============================================================
        FEEDBACK / STATUS BAR
     ============================================================ */
-    function showFeedback(message, duration = 3000) {
-      const el = document.getElementById('status-message');
-      if (!el) return;
-      el.textContent = message;
-      if (feedbackTimer) clearTimeout(feedbackTimer);
-      if (duration > 0) feedbackTimer = setTimeout(() => { el.textContent = 'Ready'; }, duration);
-    }
 
     /* ============================================================
        LOT BOUNDARY PANEL — appears in right panel after DXF import
