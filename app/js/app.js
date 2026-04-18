@@ -775,8 +775,8 @@
       state.surfaces        = [];
       state.hoveredSurface  = null;
       state.selectedSurface = null;
-      siteAreaM2      = 0;
-      state.siteAreaM2 = 0;
+      state.siteAreaM2      = 0;
+      siteAreaM2            = 0;
       clearSurfaceCanvasOutline();
 
       document.getElementById('left-panel').classList.remove('site-imported');
@@ -787,8 +787,8 @@
       document.getElementById('gpr-section').style.display              = 'none';
       document.getElementById('plant-schedule-section').style.display   = 'none';
       document.getElementById('empty-props').style.display              = 'block';
-      document.getElementById('section-state.surfaces').style.display      = 'none';
-      document.getElementById('state.surfaces-list').innerHTML              = '';
+      document.getElementById('section-surfaces').style.display      = 'none';
+      document.getElementById('surfaces-list').innerHTML              = '';
       document.getElementById('gpr-value').textContent               = '\u2014';
       document.getElementById('boundary-section')?.remove();
       clearLotBoundary();
