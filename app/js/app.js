@@ -34,6 +34,7 @@
       isGizmo3DVisible,
     } from './north-point-3d.js';
     import { state } from './state.js';
+    import { updateSceneHelpers, showGridSpacingPopup, majorCellSize } from './grid.js';
     import { initGeo, latlonToMetres, extractCoordinates, computeBBox, computePolygonArea, computePolygonPerimeter, loadMapTiles, clearMapTiles } from './geo.js';
     import { initUI, showFeedback } from './ui.js';
 
@@ -323,115 +324,8 @@
     });
 
     // ── Helper: current auto major cell size ──────────────────────────────
-    function _majorCellSize() {
-      const rawCell = _lastSiteSpan / 10;
-      return manualGridSpacing
-        ? manualGridSpacing
-        : (rawCell < 50 ? 50 : rawCell < 100 ? 100 : rawCell < 250 ? 250 : 500);
-    }
 
     // ── Combined Grid Spacing popup ───────────────────────────────────────
-    function showGridSpacingPopup(cx, cy) {
-      let pop = document.getElementById('grid-spacing-popup');
-      if (pop) { pop.remove(); return; }
-      pop = document.createElement('div');
-      pop.id = 'grid-spacing-popup';
-      pop.style.cssText = `
-        position:fixed; z-index:1000;
-        background:var(--chrome-panel); border:1px solid var(--chrome-border);
-        border-radius:6px; box-shadow:0 4px 20px rgba(0,0,0,0.18);
-        padding:12px 14px; width:214px;
-        font-family:var(--font-ui,'Outfit',sans-serif); font-size:12px;
-        color:var(--text-primary);`;
-      pop.innerHTML = `
-        <div style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.07em;
-                    color:var(--text-secondary);margin-bottom:10px;">Grid Spacing</div>
-        <div style="display:grid;grid-template-columns:44px 1fr auto;
-                    gap:7px 8px;align-items:center;margin-bottom:6px;">
-          <span style="font-size:11px;color:var(--text-secondary);">Major Grid</span>
-          <input type="number" id="gs-major" min="1" max="10000" step="1" placeholder="auto"
-            style="background:var(--chrome-input);border:1px solid var(--chrome-border);
-                   border-radius:4px;color:var(--text-primary);font-size:12px;
-                   padding:4px 6px;outline:none;text-align:right;
-                   width:100%;box-sizing:border-box;">
-          <span style="font-size:11px;color:var(--text-secondary);">m</span>
-          <span style="font-size:11px;color:var(--text-secondary);">Minor Grid</span>
-          <input type="number" id="gs-minor" min="2" max="100" step="1" placeholder="off"
-            style="background:var(--chrome-input);border:1px solid var(--chrome-border);
-                   border-radius:4px;color:var(--text-primary);font-size:12px;
-                   padding:4px 6px;outline:none;text-align:right;
-                   width:100%;box-sizing:border-box;">
-          <span style="font-size:11px;color:var(--text-secondary);">lines</span>
-        </div>
-        <div id="gs-hint" style="font-size:10px;color:var(--text-muted);
-                                  margin-bottom:10px;min-height:13px;"></div>
-        <div style="display:flex;gap:6px;">
-          <button id="gs-ok" style="flex:1;background:var(--accent-mid);color:#fff;
-            border:none;border-radius:4px;font-size:12px;padding:5px 0;cursor:pointer;">OK</button>
-          <button id="gs-cancel" style="flex:1;background:var(--chrome-panel-alt);
-            color:var(--text-primary);border:1px solid var(--chrome-border);border-radius:4px;
-            font-size:12px;padding:5px 0;cursor:pointer;">Cancel</button>
-          <button id="gs-reset" style="flex:1;background:none;color:var(--text-secondary);
-            border:1px solid var(--chrome-border);border-radius:4px;
-            font-size:12px;padding:5px 0;cursor:pointer;" title="Reset both to auto">Reset</button>
-        </div>`;
-      document.body.appendChild(pop);
-
-      // Position near cursor, nudge away from viewport edges
-      pop.style.left = Math.min(cx + 4, window.innerWidth  - 222 - 8) + 'px';
-      pop.style.top  = Math.min(cy + 4, window.innerHeight - 158 - 8) + 'px';
-
-      const majInp = document.getElementById('gs-major');
-      const minInp = document.getElementById('gs-minor');
-      const hint   = document.getElementById('gs-hint');
-      majInp.value = manualGridSpacing    ?? '';
-      minInp.value = manualMinorDivisions ?? '';
-
-      const updateHint = () => {
-        const n    = parseInt(minInp.value, 10);
-        const cell = parseInt(majInp.value, 10) > 0
-          ? parseInt(majInp.value, 10) : _majorCellSize();
-        hint.textContent = (n >= 2)
-          ? `Sub-cell: ${(cell / n) % 1 === 0 ? (cell / n) : (cell / n).toFixed(1)} m`
-          : '';
-      };
-      updateHint();
-      majInp.addEventListener('input', updateHint);
-      minInp.addEventListener('input', updateHint);
-      majInp.focus(); majInp.select();
-
-      const applyAll = (maj, min) => {
-        const hasDN = (getDesignNorthAngle() ?? 0) !== 0;
-        if (hasDN && designGridManager?.grids?.size) {
-          // Design Grid is active — update Design Grid spacing only
-          dgSpacing       = (maj > 0)  ? maj : null;
-          dgMinorDivisions = (min >= 2) ? min : null;
-          const cell = dgSpacing ?? _majorCellSize();
-          designGridManager.setHorizontalSpacing(cell, dgMinorDivisions ?? 0);
-          const sub = dgMinorDivisions ? cell / dgMinorDivisions : null;
-          showFeedback(`Design Grid — ${cell} m${sub ? ` · sub ${sub % 1 === 0 ? sub : sub.toFixed(1)} m` : ''}`);
-        } else {
-          // CAD grid is active — update CAD grid spacing only
-          manualGridSpacing    = (maj > 0)  ? maj : null;
-          manualMinorDivisions = (min >= 2) ? min : null;
-          updateSceneHelpers(_lastSiteSpan);
-          const cell = _majorCellSize();
-          const sub  = manualMinorDivisions ? cell / manualMinorDivisions : null;
-          showFeedback(`CAD Grid — ${manualGridSpacing ?? cell} m${sub ? ` · sub ${sub % 1 === 0 ? sub : sub.toFixed(1)} m` : ''}`);
-        }
-        pop.remove();
-      };
-      const onKey = e => {
-        if (e.key === 'Enter')  applyAll(parseInt(majInp.value, 10), parseInt(minInp.value, 10));
-        if (e.key === 'Escape') pop.remove();
-      };
-      majInp.addEventListener('keydown', onKey);
-      minInp.addEventListener('keydown', onKey);
-      document.getElementById('gs-ok').addEventListener('click', () =>
-        applyAll(parseInt(majInp.value, 10), parseInt(minInp.value, 10)));
-      document.getElementById('gs-cancel').addEventListener('click', () => pop.remove());
-      document.getElementById('gs-reset').addEventListener('click',  () => applyAll(0, 0));
-    }
 
     /* ============================================================
        PANEL RESIZE (drag handle between panel and viewport)
@@ -505,60 +399,6 @@
     const ambientLight = new THREE.AmbientLight(0xffffff, 0.3);
     scene.add(keyLight, fillLight, ambientLight);
 
-    /* ============================================================
-       GRID + AXES HELPERS
-    ============================================================ */
-    function updateSceneHelpers(siteSpan) {
-      _lastSiteSpan = siteSpan;
-      if (gridHelper)      { scene.remove(gridHelper);      gridHelper.geometry?.dispose();      gridHelper      = null; }
-      if (gridHelperMinor) { scene.remove(gridHelperMinor); gridHelperMinor.geometry?.dispose(); gridHelperMinor = null; }
-      if (axesHelper) { scene.remove(axesHelper); axesHelper = null; }
-      axesYLine = null;
-
-      const gridSize = 10000;
-      const rawCell  = siteSpan / 10;
-      const cellSize = manualGridSpacing
-        ? manualGridSpacing
-        : (rawCell < 50 ? 50 : rawCell < 100 ? 100 : rawCell < 250 ? 250 : 500);
-      const divisions = gridSize / cellSize;
-
-      // CAD Universe grid — ALWAYS aligned with True North, NEVER rotates.
-      // Visible but secondary: the Design Grid (green) is the active working grid.
-      gridHelper = new THREE.GridHelper(gridSize, divisions, 0xa8b8a0, 0xc0cdb8);
-      gridHelper.material.opacity     = 0.65;
-      gridHelper.material.transparent = true;
-      gridHelper.visible = (currentMode === '2d');
-      scene.add(gridHelper);
-      // gridHelperMinor belongs to the Design Grid, not the CAD Universe.
-      // It is created and managed by DesignGridManager (see js/design-grid.js).
-
-      // Update Design Grid extent and spacing to match site span
-      if (designGridManager) {
-        const extent = gridSize / 2;
-        designGridManager.setHorizontalExtent(extent);
-        designGridManager.setHorizontalSpacing(
-          manualGridSpacing    ?? cellSize,
-          manualMinorDivisions ?? 0
-        );
-        designGridManager.setVisible(currentMode === '2d');
-      }
-
-      const axisLen = siteSpan * 0.3;
-      const makeAxisLine = (end, color) => {
-        const geom = new THREE.BufferGeometry().setFromPoints([
-          new THREE.Vector3(0, 0, 0), end
-        ]);
-        return new THREE.Line(geom, new THREE.LineBasicMaterial({ color, depthTest: false }));
-      };
-      axesHelper = new THREE.Group();
-      axesHelper.add(makeAxisLine(new THREE.Vector3(axisLen, 0, 0),   0xff2222)); // X → East  (red)
-      axesHelper.add(makeAxisLine(new THREE.Vector3(0, 0, -axisLen),  0x22aa44)); // Y → North (green, world -Z)
-      axesYLine = makeAxisLine(new THREE.Vector3(0, axisLen, 0),      0x2255ff);  // Z → Up    (blue, world +Y)
-      axesHelper.add(axesYLine);
-      axesYLine.visible = (currentMode === '3d');
-      axesHelper.renderOrder = 999;
-      scene.add(axesHelper);
-    }
     updateSceneHelpers(100);
 
     /* ============================================================
