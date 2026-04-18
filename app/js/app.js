@@ -125,14 +125,14 @@
        RENDERER
     ============================================================ */
     const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
-    state.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 
     const scene = new THREE.Scene();
 
-    // ── Bridge local vars to state so modules (grid.js, geo.js etc.) can read them ──
-    state.scene    = scene;
-    state.renderer = renderer;
-    state.canvas   = canvas;
+    // ── Bridge immediately so all subsequent code and modules can use state.* ──
+    state.scene     = scene;
+    state.renderer  = renderer;
+    state.canvas    = canvas;
     state.container = container;
 
     syncViewportBackground();
@@ -143,17 +143,14 @@
        CAMERAS
     ============================================================ */
     const camera3D = new THREE.PerspectiveCamera(45, 2, 0.1, 10000);
-    state.camera3D.position.set(100, 100, 100);
+    camera3D.position.set(100, 100, 100);
+    state.camera3D = camera3D;
 
     const camera2D = new THREE.OrthographicCamera(-50, 50, 50, -50, 0.1, 20000);
-    state.camera2D.position.set(0, 10000, 0);
-    state.camera2D.quaternion.setFromEuler(new THREE.Euler(-Math.PI / 2, 0, 0));
-
-
-    // Bridge cameras to state
-    state.camera3D = camera3D;
+    camera2D.position.set(0, 10000, 0);
+    camera2D.quaternion.setFromEuler(new THREE.Euler(-Math.PI / 2, 0, 0));
     state.camera2D = camera2D;
-    state.camera   = state.camera2D;
+    state.camera   = camera2D;
 
     /* ============================================================
        CONTROLS
