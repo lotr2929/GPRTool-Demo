@@ -219,6 +219,9 @@
   <div id="header-container"></div>
   <div id="body-container"></div>
 
+  <!-- JSZip — loaded before ES modules so window.JSZip is available to gpr-file.js -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+
   <script type="module">
     import * as THREE from 'three';
     import { OrbitControls } from './js/OrbitControls.js';
@@ -229,6 +232,10 @@
       setRealWorldAnchor, getRealWorldAnchor, hasRealWorldAnchor,
       setSceneOffset, sceneToWGS84, wgs84ToScene,
     } from './js/real-world.js';
+    import {
+      createInitialGPR, addBoundaryToGPR, openGPR, downloadGPR,
+    } from './js/gpr-file.js';
+    import { initSiteBoundary, openBoundaryPicker } from './js/site-boundary.js';
     // ── DESIGN WORLD (grids, north angle) — never mixes with Real World ────────
     import { initSiteSelection }    from './js/site-selection.js';
     import { initCADMapperImport, buildLayerPanel } from './js/cadmapper-import.js';
@@ -2282,6 +2289,66 @@
       el.textContent = message;
       if (feedbackTimer) clearTimeout(feedbackTimer);
       if (duration > 0) feedbackTimer = setTimeout(() => { el.textContent = 'Ready'; }, duration);
+
+    /* ============================================================
+       LOT BOUNDARY PANEL — appears in right panel after DXF import
+    ============================================================ */
+    function buildBoundaryPanel(wgs84Bounds) {
+      const existing = document.getElementById('boundary-section');
+      if (existing) existing.remove();
+
+      const section = document.createElement('div');
+      section.id        = 'boundary-section';
+      section.className = 'property-section';
+      section.innerHTML = '<h4>Lot Boundary</h4>';
+
+      const row = document.createElement('div');
+      row.className = 'info-row';
+
+      if (wgs84Bounds) {
+        const info = document.createElement('div');
+        info.style.cssText = 'font-size:11px; color:var(--text-secondary); margin-bottom:8px;';
+        info.textContent = `Site centred at ${wgs84Bounds.sw.lat.toFixed(5)}\u00b0, `
+          + `${wgs84Bounds.sw.lng.toFixed(5)}\u00b0`;
+        row.appendChild(info);
+      }
+
+      const btn = document.createElement('button');
+      btn.id = 'draw-boundary-btn';
+      btn.textContent = 'Draw Lot Boundary\u2026';
+      btn.style.cssText = `
+        width:100%; padding:7px 12px; font-size:12px; cursor:pointer;
+        background:var(--accent-mid,#4a8a4a); color:#fff; border:none;
+        border-radius:4px; text-align:left;`;
+      btn.addEventListener('click', () => {
+        if (!wgs84Bounds) {
+          showFeedback('No UTM coordinates \u2014 re-import with UTM values to use boundary picker');
+          return;
+        }
+        openBoundaryPicker(wgs84Bounds, async (geojson) => {
+          try {
+            await addBoundaryToGPR(geojson);
+            btn.textContent = '\u2713 Lot Boundary saved';
+            btn.style.background = 'var(--accent-dark,#2d6b2d)';
+            showFeedback('Lot boundary saved to project');
+          } catch (err) {
+            console.error('[GPR] boundary save failed:', err);
+            showFeedback('Failed to save boundary: ' + err.message);
+          }
+        });
+      });
+
+      row.appendChild(btn);
+      section.appendChild(row);
+
+      const layerSection = document.getElementById('cadmapper-layer-section');
+      const panelContent = document.querySelector('#right-panel .panel-content');
+      if (layerSection && panelContent) {
+        panelContent.insertBefore(section, layerSection.nextSibling);
+      } else if (panelContent) {
+        panelContent.appendChild(section);
+      }
+    }
     }
 
 
@@ -3504,9 +3571,10 @@
     }
 
     initSiteSelection({ drawSiteBoundary, onSiteSelected: (lat, lng) => showSitePin(lat, lng) });
+    initSiteBoundary();
     initCADMapperImport({
       THREE,
-      onLayersLoaded: (layerGroups) => {
+      onLayersLoaded: async (layerGroups, dxfFile) => {
         // Clear existing CADMapper geometry
         if (cadmapperGroup) {
           scene.remove(cadmapperGroup);
@@ -3535,9 +3603,15 @@
 
         // ── REAL WORLD: record scene offset so any scene coord can be
         // converted back to UTM / WGS84 via real-world.js.
-        // centre.x and centre.z are the DXF-local offsets (metres) that were
-        // subtracted to bring the DXF centroid to scene(0,0,0).
         setSceneOffset(centre.x, centre.z);
+
+        // ── REAL WORLD: compute WGS84 bounding box of the DXF for Google Maps picker.
+        // finalBox is computed after centering — min/max are scene-space metres.
+        const finalBox = new THREE.Box3().setFromObject(cadmapperGroup);
+        const wgs84Bounds = hasRealWorldAnchor() ? {
+          sw: sceneToWGS84(finalBox.min.x, finalBox.min.z),
+          ne: sceneToWGS84(finalBox.max.x, finalBox.max.z),
+        } : null;
 
         scene.add(cadmapperGroup);
 
@@ -3546,27 +3620,15 @@
         const siteSpan = Math.max(size.x, size.z);
         updateSceneHelpers(siteSpan);
 
-        // Initialise the horizontal Design Grid at the DXF centre (world origin).
-        // Origin = (0,0,0) because we centred the DXF by moving its children above.
-        // Spacing and extent are sourced from updateSceneHelpers values.
-        // The grid is built at True North; rotation is applied each frame via
-        // designGridManager.setHorizontalRotation() in the animation loop.
         const rawCell  = siteSpan / 10;
         const cellSize = manualGridSpacing
           ? manualGridSpacing
           : (rawCell < 50 ? 50 : rawCell < 100 ? 100 : rawCell < 250 ? 250 : 500);
-        // Initialise Design Grid spacing from current CAD grid defaults.
-        // dgSpacing/dgMinorDivisions are the Design Grid's own settings —
-        // they start equal to CAD values and diverge only when user explicitly
-        // changes them while the Design Grid is active.
         if (dgSpacing === null) dgSpacing = cellSize;
         if (dgMinorDivisions === null) dgMinorDivisions = 0;
 
         designGridManager.initHorizontal(
-          dgSpacing,
-          dgMinorDivisions,
-          5000,
-          new THREE.Vector3(0, 0, 0)
+          dgSpacing, dgMinorDivisions, 5000, new THREE.Vector3(0, 0, 0)
         );
 
         fit3DCamera(new THREE.Box3().setFromObject(cadmapperGroup));
@@ -3578,8 +3640,41 @@
 
         buildLayerPanel(layerGroups);
 
-        const layerNames = Object.keys(layerGroups).join(', ');
-        showFeedback(`CADMapper context loaded \u2014 ${Object.keys(layerGroups).length} layers: ${layerNames}`);
+        // ── Create initial .gpr file ───────────────────────────────────────
+        if (hasRealWorldAnchor()) {
+          const anchor   = getRealWorldAnchor();
+          const siteName = dxfFile ? dxfFile.name.replace(/\.dxf$/i, '') : 'Untitled Site';
+          try {
+            await createInitialGPR({
+              siteName,
+              reference: {
+                utm_zone:       anchor.zone,
+                utm_easting:    anchor.easting,
+                utm_northing:   anchor.northing,
+                utm_hemisphere: anchor.hemisphere,
+                wgs84_lat:      anchor.lat,
+                wgs84_lng:      anchor.lng,
+                scene_offset_x: centre.x,
+                scene_offset_z: centre.z,
+                site_span_m:    siteSpan,
+              },
+              design: {
+                design_north_angle: 0,
+                grid_spacing_m:     cellSize,
+                minor_divisions:    0,
+              },
+              dxfFile,
+            });
+            buildBoundaryPanel(wgs84Bounds);
+            showFeedback('Project saved \u2014 draw lot boundary to complete site setup');
+          } catch (err) {
+            console.warn('[GPR] .gpr creation failed:', err);
+            showFeedback(`CADMapper context loaded \u2014 ${Object.keys(layerGroups).length} layers`);
+          }
+        } else {
+          const layerNames = Object.keys(layerGroups).join(', ');
+          showFeedback(`CADMapper context loaded \u2014 ${Object.keys(layerGroups).length} layers: ${layerNames}`);
+        }
       }
     });
 

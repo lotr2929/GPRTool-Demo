@@ -317,7 +317,7 @@ async function runImport() {
       throw new Error('No geometry found in selected layers');
     }
     closeModal();
-    _callbacks.onLayersLoaded(layerGroups);
+    _callbacks.onLayersLoaded(layerGroups, _dxfFile);
   } catch (err) {
     setStatus('Import failed: ' + err.message, true);
     document.getElementById('cadmapper-import-btn').disabled = false;
