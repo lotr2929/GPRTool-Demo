@@ -1310,19 +1310,20 @@
         const centre = new THREE.Vector3();
         box.getCenter(centre);
 
-        // Centre by moving children (not the group) so state.cadmapperGroup stays at
-        // world (0,0,0). Rotation in the animation loop then pivots correctly
-        // around the scene centre — the DXF's visual centre.
-        state.cadmapperGroup.children.forEach(child => {
-          child.position.x -= centre.x;
-          child.position.z -= centre.z;
-        });
-        const box2 = new THREE.Box3().setFromObject(state.cadmapperGroup);
-        state.cadmapperGroup.children.forEach(child => { child.position.y -= box2.min.y; });
-
-        // ── REAL WORLD: record scene offset so any scene coord can be
-        // converted back to UTM / WGS84 via real-world.js.
-        setSceneOffset(centre.x, centre.z);
+        // CADMapper DXF: geometry is in DXF-local space — must centre.
+        // OSM import: geometry already in scene space via wgs84ToScene — skip shift.
+        if (dxfFile) {
+          state.cadmapperGroup.children.forEach(child => {
+            child.position.x -= centre.x;
+            child.position.z -= centre.z;
+          });
+          const box2 = new THREE.Box3().setFromObject(state.cadmapperGroup);
+          state.cadmapperGroup.children.forEach(child => { child.position.y -= box2.min.y; });
+          setSceneOffset(centre.x, centre.z);
+        } else {
+          // OSM: scene offset is zero — geometry sits at real-world anchor origin
+          setSceneOffset(0, 0);
+        }
 
         // ── REAL WORLD: compute WGS84 bounding box of the DXF for Google Maps picker.
         // finalBox is computed after centering — min/max are scene-space metres.

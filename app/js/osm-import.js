@@ -16,7 +16,7 @@
  * Callbacks: { THREE, onLayersLoaded(layerGroups, null) }
  */
 
-import { setRealWorldAnchor, utmToWGS84, wgs84ToScene } from './real-world.js';
+import { setRealWorldAnchor, utmToWGS84, wgs84ToScene, wgs84ToUTM } from './real-world.js';
 
 // ── Layer config — mirrors cadmapper-import.js LAYER_CONFIG ──────────────
 const LAYER_CONFIG = {
@@ -61,7 +61,7 @@ const MODAL_HTML = `
       <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="#fff" stroke-width="1.4">
         <circle cx="8" cy="8" r="6"/><path d="M2 8h12M8 2c-2 2-3 4-3 6s1 4 3 6M8 2c2 2 3 4 3 6s-1 4-3 6"/>
       </svg>
-      <h3 style="margin:0; font-size:13px; font-weight:600; flex:1; color:#fff;">Import from Map</h3>
+      <h3 style="margin:0; font-size:13px; font-weight:600; flex:1; color:#fff;">Import Site from OSM</h3>
       <button id="osm-close" style="background:none;border:none;color:rgba(255,255,255,0.6);
         cursor:pointer;font-size:18px;line-height:1;padding:2px 6px;">&#x2715;</button>
     </div>
@@ -70,31 +70,25 @@ const MODAL_HTML = `
                 border-bottom:1px solid var(--chrome-border);">
       Free global site data from <strong style="color:var(--text-primary);">OpenStreetMap</strong>
       \u2014 buildings, roads, terrain, parks, water. No account required.
-      Enter the <strong style="color:var(--text-primary);">UTM coordinates</strong> of your site centre.
+      Right-click your site in <strong style="color:var(--text-primary);">Google Maps</strong>
+      to copy the latitude and longitude.
     </div>
 
     <div style="padding:14px 16px; border-bottom:1px solid var(--chrome-border);">
       <label style="font-size:11px;color:var(--text-secondary);display:block;margin-bottom:8px;">
-        UTM Coordinates (site centre)
+        Site centre (right-click in Google Maps to copy)
       </label>
       <div style="display:flex;gap:8px;">
-        <div style="width:80px;">
-          <div style="font-size:10px;color:var(--text-secondary);margin-bottom:3px;">Zone</div>
-          <input id="osm-zone" type="number" placeholder="50"
+        <div style="flex:1;">
+          <div style="font-size:10px;color:var(--text-secondary);margin-bottom:3px;">Latitude</div>
+          <input id="osm-lat" type="number" step="any" placeholder="-31.9505"
             style="width:100%;box-sizing:border-box;background:var(--chrome-input);
             border:1px solid var(--chrome-border);border-radius:4px;
             color:var(--text-primary);font-size:12px;padding:5px 8px;outline:none;">
         </div>
         <div style="flex:1;">
-          <div style="font-size:10px;color:var(--text-secondary);margin-bottom:3px;">Easting (m)</div>
-          <input id="osm-easting" type="number" placeholder="388500"
-            style="width:100%;box-sizing:border-box;background:var(--chrome-input);
-            border:1px solid var(--chrome-border);border-radius:4px;
-            color:var(--text-primary);font-size:12px;padding:5px 8px;outline:none;">
-        </div>
-        <div style="flex:1;">
-          <div style="font-size:10px;color:var(--text-secondary);margin-bottom:3px;">Northing (m)</div>
-          <input id="osm-northing" type="number" placeholder="-3535933"
+          <div style="font-size:10px;color:var(--text-secondary);margin-bottom:3px;">Longitude</div>
+          <input id="osm-lng" type="number" step="any" placeholder="115.8605"
             style="width:100%;box-sizing:border-box;background:var(--chrome-input);
             border:1px solid var(--chrome-border);border-radius:4px;
             color:var(--text-primary);font-size:12px;padding:5px 8px;outline:none;">
@@ -118,7 +112,7 @@ const MODAL_HTML = `
 
     <div style="padding:10px 16px;display:flex;align-items:center;gap:8px;">
       <span id="osm-status" style="flex:1;font-size:11px;color:var(--text-secondary);">
-        Enter UTM coordinates to import site data.
+        Enter latitude and longitude to import site data.
       </span>
       <button id="osm-import-btn" style="
         background:var(--accent-mid,#4a8a4a);color:#fff;border:none;
@@ -157,13 +151,11 @@ function setStatus(msg, isError = false) {
   el.style.color = isError ? '#e06060' : 'var(--text-secondary)';
 }
 
-// ── UTM → WGS84 bounding box ──────────────────────────────────────────────
-
-function utmBboxToWGS84(zone, easting, northing, radiusM) {
-  const hemi = northing < 0 ? 'S' : 'N';
-  const sw = utmToWGS84(easting - radiusM, northing - radiusM, zone, hemi);
-  const ne = utmToWGS84(easting + radiusM, northing + radiusM, zone, hemi);
-  return { south: sw.lat, west: sw.lng, north: ne.lat, east: ne.lng };
+// ── WGS84 bounding box from lat/lng centre + radius in metres ────────────
+function latLngToBbox(lat, lng, radiusM) {
+  const dLat = radiusM / 111320;
+  const dLng = radiusM / (111320 * Math.cos(lat * Math.PI / 180));
+  return { south: lat - dLat, north: lat + dLat, west: lng - dLng, east: lng + dLng };
 }
 
 // ── Overpass query builder ────────────────────────────────────────────────
@@ -493,24 +485,32 @@ function buildLayerGroups(osmData, THREE) {
 
 // ── Run import ────────────────────────────────────────────────────────────
 async function runImport() {
-  const zone     = parseInt(document.getElementById('osm-zone').value.trim(), 10);
-  const easting  = parseFloat(document.getElementById('osm-easting').value);
-  const northing = parseFloat(document.getElementById('osm-northing').value);
-  const radius   = parseInt(document.getElementById('osm-radius').value, 10);
+  const lat    = parseFloat(document.getElementById('osm-lat').value);
+  const lng    = parseFloat(document.getElementById('osm-lng').value);
+  const radius = parseInt(document.getElementById('osm-radius').value, 10);
 
-  if (isNaN(zone) || isNaN(easting) || isNaN(northing)) {
-    setStatus('Please enter UTM Zone, Easting and Northing.', true); return;
+  if (isNaN(lat) || isNaN(lng)) {
+    setStatus('Please enter latitude and longitude.', true); return;
   }
+  if (lat < -90 || lat > 90 || lng < -180 || lng > 180) {
+    setStatus('Invalid coordinates — latitude must be -90 to 90, longitude -180 to 180.', true); return;
+  }
+
+  // Derive UTM zone from longitude
+  const zone = Math.floor((lng + 180) / 6) + 1;
+  const { easting, northing } = wgs84ToUTM(lat, lng, zone);
+  // CADMapper convention: southern hemisphere northing is negative
+  const utmNorthing = lat < 0 ? northing - 10000000 : northing;
 
   const btn = document.getElementById('osm-import-btn');
   btn.disabled = true; btn.style.opacity = '0.5';
 
   try {
     // Set Real World anchor
-    setRealWorldAnchor(zone, easting, northing);
+    setRealWorldAnchor(zone, easting, utmNorthing);
 
-    // Compute WGS84 bounding box
-    const bbox = utmBboxToWGS84(zone, easting, northing, radius);
+    // Compute WGS84 bounding box directly from lat/lng + radius
+    const bbox = latLngToBbox(lat, lng, radius);
 
     // Fetch OSM data
     setStatus('Fetching OSM data\u2026');
