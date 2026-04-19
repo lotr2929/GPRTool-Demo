@@ -252,6 +252,10 @@ function initMap(wgs84Bounds) {
     new google.maps.LatLng(wgs84Bounds.ne.lat, wgs84Bounds.ne.lng)
   );
   _map.fitBounds(bounds);
+  // Ensure minimum zoom 19 so parcel boundary lines are visible
+  google.maps.event.addListenerOnce(_map, 'bounds_changed', () => {
+    if (_map.getZoom() < 19) _map.setZoom(19);
+  });
 
   // Drawing manager — polygon tool only
   _drawingMgr = new google.maps.drawing.DrawingManager({
