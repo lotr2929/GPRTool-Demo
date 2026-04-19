@@ -6,7 +6,7 @@ import { state } from './state.js';
 import { showFeedback } from './ui.js';
 import { latlonToMetres, computeBBox, computePolygonArea, computePolygonPerimeter, loadMapTiles } from './geo.js';
 import { getRealWorldAnchor, sceneToWGS84, wgs84ToScene } from './real-world.js';
-import { addBoundaryToGPR, getActiveGPRBlob, downloadGPR } from './gpr-file.js';
+import { addBoundaryToGPR, getActiveGPRBlob } from './gpr-file.js';
 import { saveProject } from './projects.js';
 import { updateSceneHelpers } from './grid.js';
 import { fit2DCamera, update2DCamera, switchMode } from './viewport.js';
@@ -293,6 +293,8 @@ export function buildSatelliteLayerRow() {
   row.appendChild(label);
   section.appendChild(row);
 }
+
+export function showSitePin(lat, lng) {
   if (state.siteBoundaryLine) state.siteBoundaryLine.visible = false;
   if (state.sitePinGroup) {
     state.scene.remove(state.sitePinGroup);
