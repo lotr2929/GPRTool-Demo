@@ -35,7 +35,8 @@
     } from './north-point-3d.js';
     import { state } from './state.js';
     import { drawSiteBoundary, buildBoundaryPanel, clearLotBoundary, renderLotBoundary, buildLotBoundaryLayerRow, showSitePin, updateSitePinDOM,
-         startBoundaryDraw, handleBoundaryClick, handleBoundaryDblClick, confirmBoundaryDraw, cancelBoundaryDraw } from './site.js';
+         startBoundaryDraw, handleBoundaryClick, handleBoundaryDblClick, confirmBoundaryDraw, cancelBoundaryDraw,
+         buildSatelliteLayerRow } from './site.js';
     import { syncViewportBackground, update2DCamera, fit2DCamera, fit3DCamera, drawSurfaceCanvasOutline, clearSurfaceCanvasOutline, fitSurfaceCamera, switchMode, resizeToContainer, toggleAxes, updateGridVisibility, setGridVisible } from './viewport.js';
     import { recalcGPR, updateClearBtn, addPlantInstance, removePlantInstance, updateInstanceCanopyArea, updateSurfaceListTag, renderSurfacePlantSchedule, renderPlantList, refreshModalStatus, openPlantModal, closePlantModal, placementTypeForCategory, substrateCapRadius, substrateCapLabel, radiusLimits, getSurfaceCentre, raycastSurface, worldToSurfaceUV, surfaceUVToWorld, canvasNDC, startPlacement, cancelPlacement, clearPreview, showCirclePreview, showPolygonPreview, commitCirclePlacement, commitPolygonPlacement, polygonArea, proxyMatForCategory, buildCircleProxy, buildPolygonProxy, removeProxyForInstance, clearAllProxies } from './plants.js';
     import { detectSurfaces, populateSurfacePanel, selectSurface, deselectSurface,
@@ -900,7 +901,7 @@
         ne: sceneToWGS84( reference.site_span_m / 2,  reference.site_span_m / 2),
       } : null;
       buildBoundaryPanel(wgs84Bounds, !!boundary);
-      if (wgs84Bounds) loadSatelliteTiles(wgs84Bounds);
+      if (wgs84Bounds) { loadSatelliteTiles(wgs84Bounds).then(buildSatelliteLayerRow); }
       showFeedback(`Opened: ${manifest.site_name ?? file.name}`);
     }
 
@@ -1397,7 +1398,7 @@
               }
             } catch (_) { /* non-critical */ }
             buildBoundaryPanel(wgs84Bounds, false);
-            if (wgs84Bounds) loadSatelliteTiles(wgs84Bounds);
+            if (wgs84Bounds) { loadSatelliteTiles(wgs84Bounds).then(buildSatelliteLayerRow); }
             showFeedback('Project saved \u2014 draw lot boundary to complete site setup');
           } catch (err) {
             console.warn('[GPR] .gpr creation failed:', err);

@@ -210,15 +210,6 @@ export function buildBoundaryPanel(wgs84Bounds, hasExisting = false) {
     color:#fff;border:none;border-radius:4px;text-align:left;`;
   btn.addEventListener('click', () => startBoundaryDraw());
   row.appendChild(btn);
-
-  const dlBtn = document.createElement('button');
-  dlBtn.textContent = '\u2913 Download .gpr';
-  dlBtn.style.cssText = 'width:100%;margin-top:6px;padding:5px 12px;font-size:11px;cursor:pointer;background:none;color:var(--text-secondary);border:1px solid var(--chrome-border);border-radius:4px;text-align:left;';
-  dlBtn.addEventListener('click', async () => {
-    try { await downloadGPR(document.title || 'project'); }
-    catch (err) { showFeedback('Download failed: ' + err.message); }
-  });
-  row.appendChild(dlBtn);
   section.appendChild(row);
 
   const layerSection = document.getElementById('cadmapper-layer-section');
@@ -281,7 +272,27 @@ export function buildLotBoundaryLayerRow() {
   section.appendChild(row);
 }
 
-export function showSitePin(lat, lng) {
+export function buildSatelliteLayerRow() {
+  document.getElementById('satellite-layer-row')?.remove();
+  const section = document.getElementById('cadmapper-layer-section');
+  if (!section) return;
+
+  const row = document.createElement('div');
+  row.id = 'satellite-layer-row'; row.className = 'info-row';
+  const label = document.createElement('label');
+  label.style.cssText = 'display:flex;align-items:center;gap:8px;cursor:pointer;width:100%;';
+  const cb = document.createElement('input');
+  cb.type = 'checkbox'; cb.checked = true;
+  cb.style.cssText = 'accent-color:var(--accent-mid,#4a8a4a);';
+  cb.addEventListener('change', () => { if (state.satTileGroup) state.satTileGroup.visible = cb.checked; });
+  const dot = document.createElement('span');
+  dot.style.cssText = 'width:8px;height:8px;border-radius:50%;flex-shrink:0;background:#4488cc;';
+  const name = document.createElement('span');
+  name.style.cssText = 'flex:1;font-size:12px;'; name.textContent = 'Satellite (Google)';
+  label.append(cb, dot, name);
+  row.appendChild(label);
+  section.appendChild(row);
+}
   if (state.siteBoundaryLine) state.siteBoundaryLine.visible = false;
   if (state.sitePinGroup) {
     state.scene.remove(state.sitePinGroup);
