@@ -34,7 +34,8 @@
       isGizmo3DVisible,
     } from './north-point-3d.js';
     import { state } from './state.js';
-    import { drawSiteBoundary, buildBoundaryPanel, clearLotBoundary, renderLotBoundary, buildLotBoundaryLayerRow, showSitePin, updateSitePinDOM } from './site.js';
+    import { drawSiteBoundary, buildBoundaryPanel, clearLotBoundary, renderLotBoundary, buildLotBoundaryLayerRow, showSitePin, updateSitePinDOM,
+         startBoundaryDraw, handleBoundaryClick, handleBoundaryDblClick, confirmBoundaryDraw, cancelBoundaryDraw } from './site.js';
     import { syncViewportBackground, update2DCamera, fit2DCamera, fit3DCamera, drawSurfaceCanvasOutline, clearSurfaceCanvasOutline, fitSurfaceCamera, switchMode, resizeToContainer, toggleAxes, updateGridVisibility, setGridVisible } from './viewport.js';
     import { recalcGPR, updateClearBtn, addPlantInstance, removePlantInstance, updateInstanceCanopyArea, updateSurfaceListTag, renderSurfacePlantSchedule, renderPlantList, refreshModalStatus, openPlantModal, closePlantModal, placementTypeForCategory, substrateCapRadius, substrateCapLabel, radiusLimits, getSurfaceCentre, raycastSurface, worldToSurfaceUV, surfaceUVToWorld, canvasNDC, startPlacement, cancelPlacement, clearPreview, showCirclePreview, showPolygonPreview, commitCirclePlacement, commitPolygonPlacement, polygonArea, proxyMatForCategory, buildCircleProxy, buildPolygonProxy, removeProxyForInstance, clearAllProxies } from './plants.js';
     import { detectSurfaces, populateSurfacePanel, selectSurface, deselectSurface,
@@ -42,7 +43,7 @@
              classifyNormal, computeMeshArea, initSurfaces } from './surfaces.js';
     import { loadOBJ, loadGLTF, loadIFC, addEdgeOverlay, detectAndApplyUnitScale } from './model.js';
     import { updateSceneHelpers, showGridSpacingPopup, majorCellSize } from './grid.js';
-    import { initGeo, latlonToMetres, extractCoordinates, computeBBox, computePolygonArea, computePolygonPerimeter, loadMapTiles, clearMapTiles } from './geo.js';
+    import { initGeo, latlonToMetres, extractCoordinates, computeBBox, computePolygonArea, computePolygonPerimeter, loadMapTiles, clearMapTiles, loadSatelliteTiles, clearSatelliteTiles } from './geo.js';
     import { initUI, showFeedback } from './ui.js';
 
     /* ============================================================
@@ -74,7 +75,11 @@
       if (ctrl && !e.shiftKey && e.key === 't') { e.preventDefault(); toggleAxes(); }
       if (ctrl && !e.shiftKey && e.key === 'z') { e.preventDefault(); showFeedback('Undo — coming soon'); }
       if (ctrl &&  e.shiftKey && e.key === 'Z') { e.preventDefault(); showFeedback('Redo — coming soon'); }
-      if (e.key === 'Escape') { deselectSurface(); showFeedback('Ready'); }
+      if (e.key === 'Escape') {
+        if (state.boundaryDrawMode) { cancelBoundaryDraw(); showFeedback('Boundary draw cancelled'); return; }
+        deselectSurface(); showFeedback('Ready');
+      }
+      if (e.key === 'Enter' && state.boundaryDrawMode) { e.preventDefault(); confirmBoundaryDraw(); }
       // N = orient view to north (state.rotate2D = 0)
       if ((e.key === 'n' || e.key === 'N') && !ctrl && state.currentMode === '2d') {
         state.rotate2D = 0;
@@ -247,6 +252,12 @@
       state.pan2DActive    = false;
       state.rotate2DActive = false;
       state.renderer.domElement.releasePointerCapture(e.pointerId);
+    });
+
+    state.renderer.domElement.addEventListener('dblclick', e => {
+      if (!state.boundaryDrawMode || state.currentMode !== '2d') return;
+      e.preventDefault();
+      handleBoundaryDblClick();
     });
 
     /* ============================================================
@@ -451,6 +462,19 @@
     });
 
     state.renderer.domElement.addEventListener('click', e => {
+      // Boundary drawing mode — intercept before anything else
+      if (state.boundaryDrawMode && state.currentMode === '2d') {
+        const rect = state.canvas.getBoundingClientRect();
+        const ndcX = ((e.clientX - rect.left) / rect.width)  *  2 - 1;
+        const ndcY = ((e.clientY - rect.top)  / rect.height) * -2 + 1;
+        const raycaster = new THREE.Raycaster();
+        raycaster.setFromCamera(new THREE.Vector2(ndcX, ndcY), state.camera2D);
+        const plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+        const worldPt = new THREE.Vector3();
+        raycaster.ray.intersectPlane(plane, worldPt);
+        handleBoundaryClick(worldPt.x, worldPt.z);
+        return;
+      }
       if (placementMode && placementMode !== 'idle') return; // placement engine handles this
       if (state.currentMode !== '3d' || !state.importedModel) return;
       getPointerNDC(e);
@@ -772,6 +796,8 @@
         document.getElementById('cadmapper-layer-section')?.remove();
       }
       clearMapTiles();
+      clearSatelliteTiles();
+      cancelBoundaryDraw();
       state.surfaces        = [];
       state.hoveredSurface  = null;
       state.selectedSurface = null;
@@ -1370,6 +1396,7 @@
               }
             } catch (_) { /* non-critical */ }
             buildBoundaryPanel(wgs84Bounds, false);
+            if (wgs84Bounds) loadSatelliteTiles(wgs84Bounds);
             showFeedback('Project saved \u2014 draw lot boundary to complete site setup');
           } catch (err) {
             console.warn('[GPR] .gpr creation failed:', err);

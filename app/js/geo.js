@@ -155,3 +155,90 @@ export function clearMapTiles() {
   state.mapTileGroup = null;
   if (_onMapCleared) _onMapCleared();
 }
+
+// ── Google Maps satellite tile overlay ────────────────────────────────────
+// Uses the same Web Mercator tile grid as the OSM overlay.
+// Each tile fetched via Google Maps Static API (256×256, zoom 18).
+// Key fetched once from /api/maps-key and cached for the session.
+
+const SAT_ZOOM = 18;
+let _mapsKey = null;
+
+export async function loadSatelliteTiles(bbox) {
+  clearSatelliteTiles();
+  if (!_mapsKey) {
+    try {
+      const res = await fetch('/api/maps-key');
+      if (!res.ok) throw new Error('maps-key endpoint returned ' + res.status);
+      const data = await res.json();
+      _mapsKey = data.key;
+    } catch (err) {
+      console.warn('[GPRTool] satellite tiles: could not fetch Maps key:', err);
+      return;
+    }
+  }
+
+  state.satTileGroup = new THREE.Group();
+  state.satTileGroup.name = 'satellite-tiles';
+  state.scene.add(state.satTileGroup);
+
+  const z    = SAT_ZOOM;
+  const txMn = lonToTileX(bbox.west,  z);
+  const txMx = lonToTileX(bbox.east,  z);
+  const tyMn = latToTileY(bbox.north, z);
+  const tyMx = latToTileY(bbox.south, z);
+
+  for (let tx = txMn; tx <= txMx; tx++) {
+    for (let ty = tyMn; ty <= tyMx; ty++) {
+      _loadOneSatTile(tx, ty, z, bbox);
+    }
+  }
+}
+
+function _loadOneSatTile(tx, ty, z, bbox) {
+  const west  = tileXToLon(tx,     z);
+  const east  = tileXToLon(tx + 1, z);
+  const north = tileYToLat(ty,     z);
+  const south = tileYToLat(ty + 1, z);
+  // Use exact Mercator tile centre for the Static API request (not geographic midpoint)
+  const cLon  = tileXToLon(tx + 0.5, z);
+  const cLat  = tileYToLat(ty + 0.5, z);
+
+  const url = `https://maps.googleapis.com/maps/api/staticmap`
+    + `?center=${cLat},${cLon}&zoom=${z}&size=256x256&maptype=satellite&key=${_mapsKey}`;
+
+  // Positioning: identical Mercator math to loadOneTile (OSM overlay)
+  const cosLat = Math.cos(bbox.cLat * Math.PI / 180) * 111320;
+  const mYc    = mercatorY(bbox.cLat);
+  const x0 =  (west  - bbox.cLon) * cosLat;
+  const x1 =  (east  - bbox.cLon) * cosLat;
+  const z0 = -(mercatorY(north) - mYc) * Math.cos(bbox.cLat * Math.PI / 180);
+  const z1 = -(mercatorY(south) - mYc) * Math.cos(bbox.cLat * Math.PI / 180);
+  const cx = (x0 + x1) / 2;
+  const cz = (z0 + z1) / 2;
+  const w  = Math.abs(x1 - x0);
+  const h  = Math.abs(z1 - z0);
+
+  new THREE.TextureLoader().load(url, texture => {
+    if (!state.satTileGroup) return;
+    texture.colorSpace = THREE.SRGBColorSpace;
+    const geom = new THREE.PlaneGeometry(w, h);
+    const mat  = new THREE.MeshBasicMaterial({ map: texture, depthWrite: false });
+    const mesh = new THREE.Mesh(geom, mat);
+    mesh.rotation.x = -Math.PI / 2;
+    mesh.position.set(cx, -0.10, cz);   // Y=-0.10: above OSM (-0.15), below boundary line (0.15)
+    mesh.renderOrder = -1;
+    state.satTileGroup.add(mesh);
+  }, undefined, () => { /* silent fail per tile */ });
+}
+
+export function clearSatelliteTiles() {
+  if (!state.satTileGroup) return;
+  state.satTileGroup.children.forEach(c => {
+    c.geometry?.dispose();
+    c.material?.map?.dispose();
+    c.material?.dispose();
+  });
+  state.scene.remove(state.satTileGroup);
+  state.satTileGroup = null;
+}

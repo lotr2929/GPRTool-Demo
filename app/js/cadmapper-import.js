@@ -541,6 +541,28 @@ export function buildLayerPanel(layerGroups, container) {
   section.className = 'property-section';
   section.innerHTML = '<h4>Site Context</h4>';
 
+  // ── Select / Deselect All row ──────────────────────────────────────────
+  const allRow = document.createElement('div');
+  allRow.className = 'info-row';
+  allRow.style.cssText = 'border-bottom:1px solid var(--chrome-border);margin-bottom:4px;padding-bottom:4px;';
+  const allLabel = document.createElement('label');
+  allLabel.style.cssText = 'display:flex;align-items:center;gap:8px;cursor:pointer;width:100%;';
+  const allCb = document.createElement('input');
+  allCb.type = 'checkbox'; allCb.checked = true;
+  allCb.style.cssText = 'accent-color:var(--accent-mid,#4a8a4a);';
+  const allName = document.createElement('span');
+  allName.style.cssText = 'flex:1;font-size:12px;font-style:italic;color:var(--text-secondary);';
+  allName.textContent = 'All layers';
+  allLabel.append(allCb, allName);
+  allRow.appendChild(allLabel);
+  section.appendChild(allRow);
+  allCb.addEventListener('change', () => {
+    section.querySelectorAll('.layer-cb').forEach(cb => {
+      cb.checked = allCb.checked;
+      cb.dispatchEvent(new Event('change'));
+    });
+  });
+
   for (const [layer, group] of Object.entries(layerGroups)) {
     const cfg   = LAYER_CONFIG[layer] || { label: layer };
     const count = group.children.length;
@@ -550,7 +572,7 @@ export function buildLayerPanel(layerGroups, container) {
     const label = document.createElement('label');
     label.style.cssText = 'display:flex;align-items:center;gap:8px;cursor:pointer;width:100%;';
     const cb = document.createElement('input');
-    cb.type = 'checkbox'; cb.checked = true;
+    cb.type = 'checkbox'; cb.checked = true; cb.className = 'layer-cb';
     cb.style.cssText = 'accent-color:var(--accent-mid,#4a8a4a);';
     cb.addEventListener('change', () => { group.visible = cb.checked; });
     const dot = document.createElement('span');
