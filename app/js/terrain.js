@@ -29,6 +29,7 @@ let _bvh         = null;   // Three.js built-in BVH (via computeBoundsTree if av
 export function getSiteTerrainElevation(x, z, fallback = 0) {
   const mesh = _terrainMesh || state.terrainMeshRef || null;
   if (!mesh) return fallback;
+  mesh.updateWorldMatrix(true, false); // ensure world matrix is current
   _raycaster.ray.origin.set(x, 1000, z);
   const hits = _raycaster.intersectObject(mesh, false);
   return hits.length ? hits[0].point.y : fallback;
@@ -98,19 +99,59 @@ function clipTopoMesh(topoMesh, ring, THREE) {
 
 // ── Project flat layer group vertices onto terrain ────────────────────────
 export function projectGroupOntoTerrain(group) {
-  if (!_terrainMesh) return;
-  group.traverse(child => {
-    if (!child.isMesh && !child.isLine) return;
-    const pos = child.geometry?.getAttribute('position');
-    if (!pos) return;
-    for (let i = 0; i < pos.count; i++) {
-      const x = pos.getX(i), z = pos.getZ(i);
-      const y = getSiteTerrainElevation(x, z, pos.getY(i));
-      pos.setY(i, y + (child.isMesh ? 0.05 : 0.1)); // slight offset above terrain
-    }
-    pos.needsUpdate = true;
-    child.geometry.computeVertexNormals?.();
-  });
+export function projectGroupOntoTerrain(group) {
+  const mesh = _terrainMesh || state.terrainMeshRef || null;
+  if (!mesh) return;
+
+  mesh.updateWorldMatrix(true, false);
+
+  if (group.name === 'buildings') {
+    // Buildings: find Y_min under footprint, translate whole mesh down
+    group.traverse(child => {
+      if (!child.isMesh) return;
+      const pos = child.geometry?.getAttribute('position');
+      if (!pos) return;
+
+      // Find XZ extent and minimum terrain Y under this building
+      let yMin = Infinity;
+      const step = Math.max(1, Math.floor(pos.count / 20)); // sample up to 20 points
+      for (let i = 0; i < pos.count; i += step) {
+        const x = pos.getX(i), z = pos.getZ(i);
+        const y = _raycastTerrain(mesh, x, z);
+        if (y !== null && y < yMin) yMin = y;
+      }
+      if (yMin === Infinity) return;
+
+      // Find current base Y of this mesh (min Y of geometry)
+      let geomMinY = Infinity;
+      for (let i = 0; i < pos.count; i++) {
+        if (pos.getY(i) < geomMinY) geomMinY = pos.getY(i);
+      }
+
+      // Translate the mesh so its base sits at yMin
+      const shift = yMin - geomMinY;
+      child.position.y += shift;
+    });
+  } else {
+    // Roads, paths, parks, water, railways: vertex-by-vertex projection
+    group.traverse(child => {
+      if (!child.isMesh && !child.isLine) return;
+      const pos = child.geometry?.getAttribute('position');
+      if (!pos) return;
+      for (let i = 0; i < pos.count; i++) {
+        const x = pos.getX(i), z = pos.getZ(i);
+        const y = _raycastTerrain(mesh, x, z);
+        if (y !== null) pos.setY(i, y + 0.15); // 15cm above terrain — clears Z-fighting
+      }
+      pos.needsUpdate = true;
+    });
+  }
+}
+
+function _raycastTerrain(mesh, x, z) {
+  _raycaster.ray.origin.set(x, 1000, z);
+  const hits = _raycaster.intersectObject(mesh, false);
+  return hits.length ? hits[0].point.y : null;
 }
 
 // ── Build site terrain — main entry point ────────────────────────────────

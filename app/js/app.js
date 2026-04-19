@@ -1438,6 +1438,7 @@
               topoGroup.traverse(c => { if (c.isMesh && !topoMesh) topoMesh = c; });
               if (topoMesh) {
                 state.terrainMeshRef = topoMesh;
+                showFeedback('Conforming layers to terrain\u2026', 0);
                 const flatLayers = ['buildings','highways','major_roads','minor_roads',
                                     'paths','railways','parks','water'];
                 // Note: contours excluded — already at correct elevation from DXF
@@ -1447,7 +1448,7 @@
                 showFeedback('Terrain conforming complete');
               }
             }
-          }, 300);
+          }, 500);
         }
 
         // ── Create initial .gpr file ───────────────────────────────────────
