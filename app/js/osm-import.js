@@ -17,6 +17,8 @@
  */
 
 import { setRealWorldAnchor, utmToWGS84, wgs84ToScene, wgs84ToUTM } from './real-world.js';
+import { state } from './state.js';
+import { buildLayerPanel } from './cadmapper-import.js';
 
 // ── Layer config — mirrors cadmapper-import.js LAYER_CONFIG ──────────────
 const LAYER_CONFIG = {
@@ -298,8 +300,11 @@ async function fetchTerrainMesh(bbox, THREE) {
 async function fetchTerrainTile(tx, ty, z) {
   const url = `https://s3.amazonaws.com/elevation-tiles-prod/terrarium/${z}/${tx}/${ty}.png`;
   try {
-    // Use fetch + createImageBitmap to avoid CORS taint on canvas
-    const res = await fetch(url);
+    // Use fetch with 8s timeout per tile
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 8000);
+    const res = await fetch(url, { signal: controller.signal });
+    clearTimeout(timer);
     if (!res.ok) throw new Error('tile ' + res.status);
     const blob   = await res.blob();
     const bitmap = await createImageBitmap(blob);
@@ -632,36 +637,38 @@ async function runImport() {
     setStatus('Building geometry\u2026');
     const layerGroups = buildLayerGroups(osmData, THREE);
 
-    // Fetch terrain mesh
-    setStatus('Fetching terrain elevation\u2026');
-    const terrainResult = await fetchTerrainMesh(bbox, THREE);
-    if (terrainResult?.mesh) {
-      const { mesh: terrainGeom, points: terrainPts } = terrainResult;
-      const cfg = LAYER_CONFIG.topography;
-      const terrainGroup = new THREE.Group();
-      terrainGroup.name = 'topography';
-      terrainGroup.add(new THREE.Mesh(terrainGeom,
-        new THREE.MeshBasicMaterial({
-          color: cfg.color, opacity: cfg.opacity,
-          transparent: false, side: THREE.DoubleSide,
-          polygonOffset: true, polygonOffsetFactor: 2, polygonOffsetUnits: 1,
-        })));
-      const edges = new THREE.EdgesGeometry(terrainGeom, 10);
-      terrainGroup.add(new THREE.LineSegments(edges,
-        new THREE.LineBasicMaterial({ color: 0xa09070, opacity: 0.4, transparent: true })));
-      layerGroups.topography = terrainGroup;
-
-      // Generate contour lines at 5m intervals from terrain points
-      const contourGroup = buildContourLines(terrainPts, 4, THREE); // 4m interval matches CADMapper
-      if (contourGroup) layerGroups.contours = contourGroup;
-    }
-
     if (!Object.keys(layerGroups).length) {
       throw new Error('No data returned — check coordinates or try a larger radius');
     }
 
     closeModal();
     _callbacks.onLayersLoaded(layerGroups, null);
+
+    // Terrain + contours load in background — scene already visible
+    fetchTerrainMesh(bbox, THREE).then(terrainResult => {
+      if (!terrainResult?.mesh || !state.cadmapperGroup) return;
+      const { mesh: terrainGeom, points: terrainPts } = terrainResult;
+      const terrainGroup = new THREE.Group();
+      terrainGroup.name = 'topography';
+      terrainGroup.add(new THREE.Mesh(terrainGeom,
+        new THREE.MeshBasicMaterial({
+          color: LAYER_CONFIG.topography.color, transparent: false,
+          side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: 2, polygonOffsetUnits: 1,
+        })));
+      terrainGroup.add(new THREE.LineSegments(
+        new THREE.EdgesGeometry(terrainGeom, 10),
+        new THREE.LineBasicMaterial({ color: 0xa09070, opacity: 0.4, transparent: true })));
+      state.cadmapperGroup.add(terrainGroup);
+      buildLayerPanel({ topography: terrainGroup });
+
+      setTimeout(() => {
+        const contourGroup = buildContourLines(terrainPts, 4, THREE);
+        if (contourGroup && state.cadmapperGroup) {
+          state.cadmapperGroup.add(contourGroup);
+          buildLayerPanel({ contours: contourGroup });
+        }
+      }, 200);
+    }).catch(err => console.warn('[terrain background]', err));
 
   } catch (err) {
     setStatus('Import failed: ' + err.message, true);
