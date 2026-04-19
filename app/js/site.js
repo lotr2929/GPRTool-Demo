@@ -6,9 +6,9 @@ import { state } from './state.js';
 import { showFeedback } from './ui.js';
 import { latlonToMetres, computeBBox, computePolygonArea, computePolygonPerimeter, loadMapTiles } from './geo.js';
 import { getRealWorldAnchor, sceneToWGS84, wgs84ToScene } from './real-world.js';
-import { openBoundaryPicker } from './site-boundary.js';
 import { addBoundaryToGPR, getActiveGPRBlob } from './gpr-file.js';
 import { saveProject } from './projects.js';
+import { buildSiteTerrain } from './terrain.js';
 import { updateSceneHelpers } from './grid.js';
 import { fit2DCamera, update2DCamera, switchMode } from './viewport.js';
 
@@ -80,22 +80,45 @@ export function drawSiteBoundary(coords, opts = {}) {
 // ── In-viewport lot boundary drawing ─────────────────────────────────────
 let _bdVerts      = [];
 let _bdPreviewGrp = null;
+let _bdSnapClose  = false;   // true when cursor is near first vertex
 
 export function startBoundaryDraw() {
   cancelBoundaryDraw();
   state.boundaryDrawMode = true;
   _bdVerts = [];
+  _bdSnapClose = false;
   _bdPreviewGrp = new THREE.Group();
   _bdPreviewGrp.name = 'boundary-draw-preview';
   state.scene.add(_bdPreviewGrp);
   state.canvas.style.cursor = 'crosshair';
-  showFeedback('Click to place vertices \u2014 double-click or Enter to finish, Escape to cancel', 0);
+  showFeedback('Click to place boundary vertices \u2014 click near the start point to close, Escape to cancel', 0);
 }
 
 export function handleBoundaryClick(sceneX, sceneZ) {
   if (!state.boundaryDrawMode) return;
+  // If snapping to first vertex — close the polygon
+  if (_bdSnapClose && _bdVerts.length >= 3) {
+    confirmBoundaryDraw();
+    return;
+  }
   _bdVerts.push({ x: sceneX, z: sceneZ });
   _updateBdPreview();
+}
+
+// Called on every mousemove in 2D boundary-draw mode
+export function handleBoundaryMouseMove(screenX, screenY) {
+  if (!state.boundaryDrawMode || _bdVerts.length < 3) return;
+
+  // Project first vertex to screen space
+  const first = new THREE.Vector3(_bdVerts[0].x, 0, _bdVerts[0].z);
+  const proj  = first.clone().project(state.camera2D);
+  const rect  = state.canvas.getBoundingClientRect();
+  const sx    = (proj.x *  0.5 + 0.5) * rect.width;
+  const sy    = (proj.y * -0.5 + 0.5) * rect.height;
+
+  const dist = Math.hypot(screenX - rect.left - sx, screenY - rect.top - sy);
+  _bdSnapClose = dist < 15;
+  state.canvas.style.cursor = _bdSnapClose ? 'pointer' : 'crosshair';
 }
 
 export function handleBoundaryDblClick() {
@@ -131,6 +154,8 @@ export async function confirmBoundaryDraw() {
 
   _clearBdPreview();
   renderLotBoundary(geojson);
+  // Build terrain mesh clipped to boundary, project flat layers onto it
+  buildSiteTerrain(geojson, THREE).catch(err => console.warn('[terrain]', err));
   showFeedback('Lot boundary drawn \u2014 saving\u2026', 0);
 
   try {
@@ -199,8 +224,6 @@ export function buildBoundaryPanel(wgs84Bounds, hasExisting = false) {
   title.style.cssText = 'font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.07em;color:var(--text-secondary);margin-bottom:6px;';
   title.textContent = 'Lot Boundary';
   section.appendChild(title);
-
-  const row = document.createElement('div');
   row.style.cssText = 'display:flex;flex-direction:column;gap:6px;';
 
   const btn = document.createElement('button');
@@ -209,27 +232,7 @@ export function buildBoundaryPanel(wgs84Bounds, hasExisting = false) {
   btn.style.cssText = `width:100%;padding:7px 12px;font-size:12px;cursor:pointer;
     background:${hasExisting ? 'var(--accent-dark,#2d6b2d)' : 'var(--accent-mid,#4a8a4a)'};
     color:#fff;border:none;border-radius:4px;text-align:left;`;
-  btn.addEventListener('click', () => {
-    openBoundaryPicker(wgs84Bounds, async (geojson) => {
-      try {
-        await addBoundaryToGPR(geojson);
-        renderLotBoundary(geojson);
-        const anchor = getRealWorldAnchor();
-        const blob   = await getActiveGPRBlob();
-        if (blob && anchor) {
-          saveProject(blob, { site_name: document.title || 'GPR Project',
-            has_boundary: true, wgs84_lat: anchor.lat, wgs84_lng: anchor.lng })
-            .catch(e => console.warn('[GPR] Supabase boundary update failed:', e));
-        }
-        btn.textContent = '\u2713 Lot Boundary \u2014 Re-draw\u2026';
-        btn.style.background = 'var(--accent-dark,#2d6b2d)';
-        showFeedback('Lot boundary saved');
-      } catch (err) {
-        console.error('[GPR] boundary save failed:', err);
-        showFeedback('Failed to save boundary: ' + err.message);
-      }
-    });
-  });
+  btn.addEventListener('click', () => startBoundaryDraw());
   row.appendChild(btn);
   section.appendChild(row);
 
@@ -288,28 +291,6 @@ export function buildLotBoundaryLayerRow() {
   dot.style.cssText = 'width:8px;height:8px;border-radius:50%;flex-shrink:0;background:#ff6600;';
   const name = document.createElement('span');
   name.style.cssText = 'flex:1;font-size:12px;'; name.textContent = 'Lot Boundary';
-  label.append(cb, dot, name);
-  row.appendChild(label);
-  section.appendChild(row);
-}
-
-export function buildSatelliteLayerRow() {
-  document.getElementById('satellite-layer-row')?.remove();
-  const section = document.getElementById('cadmapper-layer-section');
-  if (!section) return;
-
-  const row = document.createElement('div');
-  row.id = 'satellite-layer-row'; row.className = 'info-row';
-  const label = document.createElement('label');
-  label.style.cssText = 'display:flex;align-items:center;gap:8px;cursor:pointer;width:100%;';
-  const cb = document.createElement('input');
-  cb.type = 'checkbox'; cb.checked = true;
-  cb.style.cssText = 'accent-color:var(--accent-mid,#4a8a4a);';
-  cb.addEventListener('change', () => { if (state.satTileGroup) state.satTileGroup.visible = cb.checked; });
-  const dot = document.createElement('span');
-  dot.style.cssText = 'width:8px;height:8px;border-radius:50%;flex-shrink:0;background:#4488cc;';
-  const name = document.createElement('span');
-  name.style.cssText = 'flex:1;font-size:12px;'; name.textContent = 'Satellite (Google)';
   label.append(cb, dot, name);
   row.appendChild(label);
   section.appendChild(row);

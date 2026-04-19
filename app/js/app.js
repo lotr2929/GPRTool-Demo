@@ -11,11 +11,12 @@
     import {
       createInitialGPR, addBoundaryToGPR, openGPR, downloadGPR, getActiveGPRBlob,
     } from './gpr-file.js';
-    import { initSiteBoundary, openBoundaryPicker } from './site-boundary.js';
     import { initProjects, showProjectsModal, saveProject, loadProject } from './projects.js';
     // ── DESIGN WORLD (grids, north angle) — never mixes with Real World ────────
     import { initSiteSelection }    from './site-selection.js';
     import { initCADMapperImport, buildLayerPanel, parseCadmapperDXF } from './cadmapper-import.js';
+    import { initOSMImport } from './osm-import.js';
+    import { buildSiteTerrain, clearSiteTerrain, getSiteTerrainElevation } from './terrain.js';
     import { DesignGridManager }    from './design-grid.js';
     import {
       initNorthPoint2D,
@@ -36,7 +37,7 @@
     import { state } from './state.js';
     import { drawSiteBoundary, buildBoundaryPanel, clearLotBoundary, renderLotBoundary, buildLotBoundaryLayerRow, showSitePin, updateSitePinDOM,
          startBoundaryDraw, handleBoundaryClick, handleBoundaryDblClick, confirmBoundaryDraw, cancelBoundaryDraw,
-         buildSatelliteLayerRow } from './site.js';
+         handleBoundaryMouseMove } from './site.js';
     import { syncViewportBackground, update2DCamera, fit2DCamera, fit3DCamera, drawSurfaceCanvasOutline, clearSurfaceCanvasOutline, fitSurfaceCamera, switchMode, resizeToContainer, toggleAxes, updateGridVisibility, setGridVisible } from './viewport.js';
     import { recalcGPR, updateClearBtn, addPlantInstance, removePlantInstance, updateInstanceCanopyArea, updateSurfaceListTag, renderSurfacePlantSchedule, renderPlantList, refreshModalStatus, openPlantModal, closePlantModal, placementTypeForCategory, substrateCapRadius, substrateCapLabel, radiusLimits, getSurfaceCentre, raycastSurface, worldToSurfaceUV, surfaceUVToWorld, canvasNDC, startPlacement, cancelPlacement, clearPreview, showCirclePreview, showPolygonPreview, commitCirclePlacement, commitPolygonPlacement, polygonArea, proxyMatForCategory, buildCircleProxy, buildPolygonProxy, removeProxyForInstance, clearAllProxies } from './plants.js';
     import { detectSurfaces, populateSurfacePanel, selectSurface, deselectSurface,
@@ -44,7 +45,7 @@
              classifyNormal, computeMeshArea, initSurfaces } from './surfaces.js';
     import { loadOBJ, loadGLTF, loadIFC, addEdgeOverlay, detectAndApplyUnitScale } from './model.js';
     import { updateSceneHelpers, showGridSpacingPopup, majorCellSize } from './grid.js';
-    import { initGeo, latlonToMetres, extractCoordinates, computeBBox, computePolygonArea, computePolygonPerimeter, loadMapTiles, clearMapTiles, loadSatelliteTiles, clearSatelliteTiles } from './geo.js';
+    import { initGeo, latlonToMetres, extractCoordinates, computeBBox, computePolygonArea, computePolygonPerimeter, loadMapTiles, clearMapTiles } from './geo.js';
     import { initUI, showFeedback } from './ui.js';
 
     /* ============================================================
@@ -201,6 +202,7 @@
 
     state.renderer.domElement.addEventListener('pointermove', e => {
       if (state.currentMode !== '2d') return;
+      if (state.boundaryDrawMode) handleBoundaryMouseMove(e.clientX, e.clientY);
 
       if (state.rotate2DActive) {
         const dx = e.clientX - state.rotate2DLast.x;
@@ -797,7 +799,7 @@
         document.getElementById('cadmapper-layer-section')?.remove();
       }
       clearMapTiles();
-      clearSatelliteTiles();
+      clearSiteTerrain();
       cancelBoundaryDraw();
       state.surfaces        = [];
       state.hoveredSurface  = null;
@@ -901,7 +903,6 @@
         ne: sceneToWGS84( reference.site_span_m / 2,  reference.site_span_m / 2),
       } : null;
       buildBoundaryPanel(wgs84Bounds, !!boundary);
-      if (wgs84Bounds) { loadSatelliteTiles(wgs84Bounds).then(buildSatelliteLayerRow); }
       showFeedback(`Opened: ${manifest.site_name ?? file.name}`);
     }
 
@@ -1289,11 +1290,10 @@
     // setGridVisible(true) defers to updateGridVisibility.
 
     initSiteSelection({ drawSiteBoundary, onSiteSelected: (lat, lng) => showSitePin(lat, lng) });
-    initSiteBoundary();
     initProjects();
-    initCADMapperImport({
-      THREE,
-      onLayersLoaded: async (layerGroups, dxfFile) => {
+
+    // Shared onLayersLoaded callback — used by both OSM and CADMapper importers
+    const onLayersLoaded = async (layerGroups, dxfFile) => {
         // Clear existing CADMapper geometry
         if (state.cadmapperGroup) {
           scene.remove(state.cadmapperGroup);
@@ -1398,18 +1398,18 @@
               }
             } catch (_) { /* non-critical */ }
             buildBoundaryPanel(wgs84Bounds, false);
-            if (wgs84Bounds) { loadSatelliteTiles(wgs84Bounds).then(buildSatelliteLayerRow); }
             showFeedback('Project saved \u2014 draw lot boundary to complete site setup');
           } catch (err) {
             console.warn('[GPR] .gpr creation failed:', err);
             showFeedback(`CADMapper context loaded \u2014 ${Object.keys(layerGroups).length} layers`);
           }
         } else {
-          const layerNames = Object.keys(layerGroups).join(', ');
-          showFeedback(`CADMapper context loaded \u2014 ${Object.keys(layerGroups).length} layers: ${layerNames}`);
+          showFeedback(`Context loaded \u2014 ${Object.keys(layerGroups).length} layers: ${Object.keys(layerGroups).join(', ')}`);
         }
-      }
-    });
+    };  // end onLayersLoaded
+
+    initCADMapperImport({ THREE, onLayersLoaded });
+    initOSMImport({ THREE, onLayersLoaded });
 
     showFeedback('GPRTool ready', 2000);
   
