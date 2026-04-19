@@ -99,7 +99,6 @@ function clipTopoMesh(topoMesh, ring, THREE) {
 
 // ── Project flat layer group vertices onto terrain ────────────────────────
 export function projectGroupOntoTerrain(group) {
-export function projectGroupOntoTerrain(group) {
   const mesh = _terrainMesh || state.terrainMeshRef || null;
   if (!mesh) return;
 
