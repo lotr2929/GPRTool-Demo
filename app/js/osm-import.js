@@ -289,18 +289,24 @@ async function fetchTerrainMesh(bbox, THREE) {
   }
   if (points.length < 4) return null;
 
-  // Triangulate with Delaunay (simple grid triangulation since points are grid-aligned)
-  return buildTerrainGeometry(points, THREE);
+  return {
+    mesh: buildTerrainGeometry(points, THREE),
+    points,  // pass through for contour generation
+  };
 }
 
 async function fetchTerrainTile(tx, ty, z) {
   const url = `https://s3.amazonaws.com/elevation-tiles-prod/terrarium/${z}/${tx}/${ty}.png`;
   try {
-    const img = await loadImage(url);
+    // Use fetch + createImageBitmap to avoid CORS taint on canvas
+    const res = await fetch(url);
+    if (!res.ok) throw new Error('tile ' + res.status);
+    const blob   = await res.blob();
+    const bitmap = await createImageBitmap(blob);
     const canvas = document.createElement('canvas');
-    canvas.width = img.width; canvas.height = img.height;
+    canvas.width = bitmap.width; canvas.height = bitmap.height;
     const ctx = canvas.getContext('2d');
-    ctx.drawImage(img, 0, 0);
+    ctx.drawImage(bitmap, 0, 0);
     const data = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
 
     const tileW = tileXToLon(tx + 1, z) - tileXToLon(tx, z);
@@ -409,7 +415,54 @@ function wayToLatLngs(el) {
 }
 
 
-// Build extruded building mesh from footprint ring
+// ── Generate contour lines from terrain point cloud ───────────────────────
+function buildContourLines(points, intervalM, THREE) {
+  if (!points?.length) return null;
+
+  // Build XZ grid of elevations
+  const xs  = [...new Set(points.map(p => Math.round(p.x * 10) / 10))].sort((a,b) => a-b);
+  const zs  = [...new Set(points.map(p => Math.round(p.z * 10) / 10))].sort((a,b) => a-b);
+  const grid = new Map();
+  for (const p of points) grid.set(`${Math.round(p.x*10)/10},${Math.round(p.z*10)/10}`, p.y);
+
+  const minE = Math.floor(Math.min(...points.map(p => p.y)) / intervalM) * intervalM;
+  const maxE = Math.ceil (Math.max(...points.map(p => p.y)) / intervalM) * intervalM;
+  const cfg  = LAYER_CONFIG.contours;
+  const group = new THREE.Group();
+  group.name  = 'contours';
+  if (cfg.yOffset) group.position.y = cfg.yOffset;
+
+  for (let elev = minE; elev <= maxE; elev += intervalM) {
+    const segments = [];
+    for (let iz = 0; iz < zs.length - 1; iz++) {
+      for (let ix = 0; ix < xs.length - 1; ix++) {
+        const v00 = grid.get(`${xs[ix]},${zs[iz]}`);
+        const v10 = grid.get(`${xs[ix+1]},${zs[iz]}`);
+        const v01 = grid.get(`${xs[ix]},${zs[iz+1]}`);
+        const v11 = grid.get(`${xs[ix+1]},${zs[iz+1]}`);
+        if (v00===undefined||v10===undefined||v01===undefined||v11===undefined) continue;
+        // Simple linear interpolation along each edge where contour crosses
+        const pts = [];
+        const lerp = (a, b, va, vb) => a + (b-a) * (elev-va)/(vb-va);
+        if ((v00<elev) !== (v10<elev)) pts.push({ x: lerp(xs[ix],xs[ix+1],v00,v10), z: zs[iz] });
+        if ((v10<elev) !== (v11<elev)) pts.push({ x: xs[ix+1], z: lerp(zs[iz],zs[iz+1],v10,v11) });
+        if ((v01<elev) !== (v11<elev)) pts.push({ x: lerp(xs[ix],xs[ix+1],v01,v11), z: zs[iz+1] });
+        if ((v00<elev) !== (v01<elev)) pts.push({ x: xs[ix], z: lerp(zs[iz],zs[iz+1],v00,v01) });
+        if (pts.length >= 2) segments.push(pts[0], pts[1]);
+      }
+    }
+    if (!segments.length) continue;
+    const verts = new Float32Array(segments.length * 3);
+    segments.forEach((p, i) => { verts[i*3]=p.x; verts[i*3+1]=elev; verts[i*3+2]=p.z; });
+    const geom = new THREE.BufferGeometry();
+    geom.setAttribute('position', new THREE.BufferAttribute(verts, 3));
+    group.add(new THREE.LineSegments(geom,
+      new THREE.LineBasicMaterial({ color: cfg.color, opacity: cfg.opacity, transparent: true })));
+  }
+  return group.children.length ? group : null;
+}
+
+// ── Build extruded building mesh from footprint ring ──────────────────────
 function buildBuilding(ring, height, THREE) {
   if (ring.length < 3) return null;
   const pts2D = ring.map(ll => {
@@ -581,8 +634,9 @@ async function runImport() {
 
     // Fetch terrain mesh
     setStatus('Fetching terrain elevation\u2026');
-    const terrainGeom = await fetchTerrainMesh(bbox, THREE);
-    if (terrainGeom) {
+    const terrainResult = await fetchTerrainMesh(bbox, THREE);
+    if (terrainResult?.mesh) {
+      const { mesh: terrainGeom, points: terrainPts } = terrainResult;
       const cfg = LAYER_CONFIG.topography;
       const terrainGroup = new THREE.Group();
       terrainGroup.name = 'topography';
@@ -596,6 +650,10 @@ async function runImport() {
       terrainGroup.add(new THREE.LineSegments(edges,
         new THREE.LineBasicMaterial({ color: 0xa09070, opacity: 0.4, transparent: true })));
       layerGroups.topography = terrainGroup;
+
+      // Generate contour lines at 5m intervals from terrain points
+      const contourGroup = buildContourLines(terrainPts, 5, THREE);
+      if (contourGroup) layerGroups.contours = contourGroup;
     }
 
     if (!Object.keys(layerGroups).length) {
