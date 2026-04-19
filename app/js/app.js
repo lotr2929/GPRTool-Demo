@@ -16,7 +16,7 @@
     import { initSiteSelection }    from './site-selection.js';
     import { initCADMapperImport, buildLayerPanel, parseCadmapperDXF } from './cadmapper-import.js';
     import { initOSMImport } from './osm-import.js';
-    import { buildSiteTerrain, clearSiteTerrain, getSiteTerrainElevation, projectGroupOntoTerrain } from './terrain.js';
+    import { buildSiteTerrain, clearSiteTerrain, getSiteTerrainElevation, projectGroupOntoTerrain, initTerrainBVH } from './terrain.js';
     import { DesignGridManager }    from './design-grid.js';
     import {
       initNorthPoint2D,
@@ -1429,7 +1429,7 @@
 
         buildLayerPanel(layerGroups);
 
-        // ── Project flat layers onto terrain mesh ─────────────────────────
+        // ── Terrain conforming: roads + buildings ─────────────────────────
         if (dxfFile) {
           setTimeout(() => {
             const topoGroup = state.cadmapperGroup?.children.find(c => c.name === 'topography');
@@ -1437,15 +1437,16 @@
               let topoMesh = null;
               topoGroup.traverse(c => { if (c.isMesh && !topoMesh) topoMesh = c; });
               if (topoMesh) {
-                state.terrainMeshRef = topoMesh;
+                // Build BVH for fast raycasting — critical for performance with 500+ buildings
+                initTerrainBVH(topoMesh);
                 showFeedback('Conforming layers to terrain\u2026', 0);
-                const flatLayers = ['buildings','highways','major_roads','minor_roads',
-                                    'paths','railways','parks','water'];
-                // Note: contours excluded — already at correct elevation from DXF
+                const layers = ['buildings','highways','major_roads','minor_roads',
+                                'paths','railways','parks','water'];
+                // Note: contours excluded — already carry correct elevation from DXF
                 state.cadmapperGroup.children.forEach(child => {
-                  if (flatLayers.includes(child.name)) projectGroupOntoTerrain(child);
+                  if (layers.includes(child.name)) projectGroupOntoTerrain(child);
                 });
-                showFeedback('Terrain conforming complete');
+                showFeedback('Ready');
               }
             }
           }, 500);

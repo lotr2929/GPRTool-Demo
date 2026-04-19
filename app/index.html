@@ -22,6 +22,17 @@
   <!-- JSZip — must load before ES modules so window.JSZip is available to gpr-file.js -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 
+  <!-- three-mesh-bvh — patches THREE.BufferGeometry with computeBoundsTree() for fast raycasting -->
+  <script src="https://cdn.jsdelivr.net/npm/three-mesh-bvh@0.7.8/build/index.umd.js"></script>
+  <script>
+    // Patch Three.js raycasting globally once BVH library is loaded
+    if (window.MeshBVHLib) {
+      const { computeBoundsTree, disposeBoundsTree, acceleratedRaycast } = window.MeshBVHLib;
+      // These will be applied after Three.js module loads — terrain.js calls computeBoundsTree()
+      window._bvhPatch = { computeBoundsTree, disposeBoundsTree, acceleratedRaycast };
+    }
+  </script>
+
   <!-- GPRTool application -->
   <script type="module" src="./js/app.js"></script>
 
