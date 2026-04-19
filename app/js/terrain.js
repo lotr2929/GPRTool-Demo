@@ -27,9 +27,10 @@ let _bvh         = null;   // Three.js built-in BVH (via computeBoundsTree if av
 
 // ── Public: get elevation at scene XZ ────────────────────────────────────
 export function getSiteTerrainElevation(x, z, fallback = 0) {
-  if (!_terrainMesh) return fallback;
+  const mesh = _terrainMesh || state.terrainMeshRef || null;
+  if (!mesh) return fallback;
   _raycaster.ray.origin.set(x, 1000, z);
-  const hits = _raycaster.intersectObject(_terrainMesh, false);
+  const hits = _raycaster.intersectObject(mesh, false);
   return hits.length ? hits[0].point.y : fallback;
 }
 

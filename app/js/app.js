@@ -16,7 +16,7 @@
     import { initSiteSelection }    from './site-selection.js';
     import { initCADMapperImport, buildLayerPanel, parseCadmapperDXF } from './cadmapper-import.js';
     import { initOSMImport } from './osm-import.js';
-    import { buildSiteTerrain, clearSiteTerrain, getSiteTerrainElevation } from './terrain.js';
+    import { buildSiteTerrain, clearSiteTerrain, getSiteTerrainElevation, projectGroupOntoTerrain } from './terrain.js';
     import { DesignGridManager }    from './design-grid.js';
     import {
       initNorthPoint2D,
@@ -1428,6 +1428,27 @@
         document.getElementById('left-panel').classList.add('site-imported');
 
         buildLayerPanel(layerGroups);
+
+        // ── Project flat layers onto terrain mesh ─────────────────────────
+        if (dxfFile) {
+          setTimeout(() => {
+            const topoGroup = state.cadmapperGroup?.children.find(c => c.name === 'topography');
+            if (topoGroup) {
+              let topoMesh = null;
+              topoGroup.traverse(c => { if (c.isMesh && !topoMesh) topoMesh = c; });
+              if (topoMesh) {
+                state.terrainMeshRef = topoMesh;
+                const flatLayers = ['buildings','highways','major_roads','minor_roads',
+                                    'paths','railways','parks','water'];
+                // Note: contours excluded — already at correct elevation from DXF
+                state.cadmapperGroup.children.forEach(child => {
+                  if (flatLayers.includes(child.name)) projectGroupOntoTerrain(child);
+                });
+                showFeedback('Terrain conforming complete');
+              }
+            }
+          }, 300);
+        }
 
         // ── Create initial .gpr file ───────────────────────────────────────
         if (hasRealWorldAnchor()) {

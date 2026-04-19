@@ -91,7 +91,7 @@ const MODAL_HTML = `
         <option value="750">750 m</option>
         <option value="1000">1 km</option>
       </select>
-      <span id="osm-status" style="font-size:11px;color:rgba(255,255,255,0.6);min-width:140px;"></span>
+      <span id="osm-status" style="font-size:11px;color:#90c890;min-width:140px;"></span>
       <button id="osm-import-btn" style="
         background:var(--accent-mid,#4a8a4a);color:#fff;border:none;
         border-radius:4px;font-size:12px;padding:6px 18px;cursor:pointer;white-space:nowrap;">
@@ -199,7 +199,7 @@ function setStatus(msg, isError = false) {
   const el = document.getElementById('osm-status');
   if (!el) return;
   el.textContent = msg;
-  el.style.color = isError ? '#e06060' : 'var(--text-secondary)';
+  el.style.color = isError ? '#e06060' : '#90c890';
 }
 
 // ── WGS84 bounding box from lat/lng centre + radius in metres ────────────
@@ -644,7 +644,9 @@ async function runImport() {
     closeModal();
     _callbacks.onLayersLoaded(layerGroups, null);
 
-    // Terrain + contours load in background — scene already visible
+    // Terrain + contours: disabled pending optimisation (causes main thread freeze)
+    // TODO: move to Web Worker or add a separate "Load Terrain" button
+    /*
     fetchTerrainMesh(bbox, THREE).then(terrainResult => {
       if (!terrainResult?.mesh || !state.cadmapperGroup) return;
       const { mesh: terrainGeom, points: terrainPts } = terrainResult;
@@ -669,6 +671,7 @@ async function runImport() {
         }
       }, 200);
     }).catch(err => console.warn('[terrain background]', err));
+    */
 
   } catch (err) {
     setStatus('Import failed: ' + err.message, true);
