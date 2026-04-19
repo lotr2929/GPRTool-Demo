@@ -31,12 +31,12 @@ let _mapsLoaded  = false;
 const MODAL_HTML = `
 <div id="boundary-overlay" style="
   display:none; position:fixed; inset:0;
-  background:rgba(0,0,0,0.45); z-index:1200;
+  background:rgba(0,0,0,0.6); z-index:1200;
   align-items:center; justify-content:center;">
   <div id="boundary-modal" style="
     background:var(--chrome-panel);
     border:1px solid var(--chrome-border);
-    border-radius:6px; width:780px; max-width:97vw;
+    border-radius:6px; width:96vw; height:94vh;
     box-shadow:0 8px 32px rgba(0,0,0,0.28);
     color:var(--text-primary);
     font-family:var(--font,'Outfit',sans-serif);
@@ -71,8 +71,8 @@ const MODAL_HTML = `
       correct any misalignment between the DXF model and the map.
     </div>
 
-    <!-- Map container -->
-    <div id="boundary-map" style="width:100%; height:460px; flex-shrink:0;
+    <!-- Map container — flex:1 so it fills all remaining height -->
+    <div id="boundary-map" style="width:100%; flex:1; min-height:0;
          background:#1a1a1a; position:relative;">
       <div id="boundary-map-loading" style="
         position:absolute; inset:0; display:flex; align-items:center;

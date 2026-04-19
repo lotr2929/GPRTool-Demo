@@ -6,6 +6,7 @@ import { state } from './state.js';
 import { showFeedback } from './ui.js';
 import { latlonToMetres, computeBBox, computePolygonArea, computePolygonPerimeter, loadMapTiles } from './geo.js';
 import { getRealWorldAnchor, sceneToWGS84, wgs84ToScene } from './real-world.js';
+import { openBoundaryPicker } from './site-boundary.js';
 import { addBoundaryToGPR, getActiveGPRBlob } from './gpr-file.js';
 import { saveProject } from './projects.js';
 import { updateSceneHelpers } from './grid.js';
@@ -208,7 +209,27 @@ export function buildBoundaryPanel(wgs84Bounds, hasExisting = false) {
   btn.style.cssText = `width:100%;padding:7px 12px;font-size:12px;cursor:pointer;
     background:${hasExisting ? 'var(--accent-dark,#2d6b2d)' : 'var(--accent-mid,#4a8a4a)'};
     color:#fff;border:none;border-radius:4px;text-align:left;`;
-  btn.addEventListener('click', () => startBoundaryDraw());
+  btn.addEventListener('click', () => {
+    openBoundaryPicker(wgs84Bounds, async (geojson) => {
+      try {
+        await addBoundaryToGPR(geojson);
+        renderLotBoundary(geojson);
+        const anchor = getRealWorldAnchor();
+        const blob   = await getActiveGPRBlob();
+        if (blob && anchor) {
+          saveProject(blob, { site_name: document.title || 'GPR Project',
+            has_boundary: true, wgs84_lat: anchor.lat, wgs84_lng: anchor.lng })
+            .catch(e => console.warn('[GPR] Supabase boundary update failed:', e));
+        }
+        btn.textContent = '\u2713 Lot Boundary \u2014 Re-draw\u2026';
+        btn.style.background = 'var(--accent-dark,#2d6b2d)';
+        showFeedback('Lot boundary saved');
+      } catch (err) {
+        console.error('[GPR] boundary save failed:', err);
+        showFeedback('Failed to save boundary: ' + err.message);
+      }
+    });
+  });
   row.appendChild(btn);
   section.appendChild(row);
 
