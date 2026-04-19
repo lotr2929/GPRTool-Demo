@@ -218,7 +218,7 @@ export function sceneToUTM(sceneX, sceneZ) {
   if (!_anchor) return null;
   return {
     easting:    _anchor.easting    + _sceneOffset.x + sceneX,
-    northing:   _anchor.northing   + _sceneOffset.z + sceneZ,
+    northing:   _anchor.northing   - _sceneOffset.z - sceneZ,
     zone:       _anchor.zone,
     hemisphere: _anchor.hemisphere,
   };
@@ -234,7 +234,7 @@ export function utmToScene(easting, northing) {
   if (!_anchor) return null;
   return {
     x: easting  - _anchor.easting  - _sceneOffset.x,
-    z: northing - _anchor.northing - _sceneOffset.z,
+    z: -(northing - _anchor.northing) - _sceneOffset.z,
   };
 }
 

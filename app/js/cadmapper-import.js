@@ -434,7 +434,7 @@ export function parseCadmapperDXF(text, selectedLayers, THREE) {
 
     for (const pts of data.lineParts) {
       const closed   = pts.length > 2 && isClosed(pts);
-      const threePts = pts.map(p => new THREE.Vector3(p.x, p.z, p.y));
+      const threePts = pts.map(p => new THREE.Vector3(p.x, p.z, -p.y));
       const geom     = new THREE.BufferGeometry().setFromPoints(
         closed ? [...threePts, threePts[0]] : threePts
       );
@@ -486,7 +486,7 @@ function parseMeshBlock(pairs, THREE) {
   // Axis map: DXF X→Three X, DXF Y→Three Z, DXF Z→Three Y
   const positions = new Float32Array(vertCount * 3);
   for (let j = 0; j < vertCount; j++) {
-    positions[j * 3] = vx[j]; positions[j * 3 + 1] = vz[j]; positions[j * 3 + 2] = vy[j];
+    positions[j * 3] = vx[j]; positions[j * 3 + 1] = vz[j]; positions[j * 3 + 2] = -vy[j];
   }
 
   const indices = [];
