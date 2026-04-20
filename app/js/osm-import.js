@@ -226,27 +226,16 @@ function buildOverpassQuery(bbox) {
 }
 
 async function fetchOverpass(query) {
-  const endpoints = [
-    'https://overpass-api.de/api/interpreter',
-    'https://overpass.kumi.systems/api/interpreter',
-    'https://maps.mail.ru/osm/tools/overpass/api/interpreter',
-  ];
-  let lastErr;
-  for (const url of endpoints) {
-    try {
-      const res = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: 'data=' + encodeURIComponent(query),
-      });
-      if (!res.ok) throw new Error('Overpass API error: ' + res.status);
-      return res.json();
-    } catch (err) {
-      lastErr = err;
-      console.warn('[OSM] endpoint failed, trying next:', url, err.message);
-    }
+  const res = await fetch('/api/overpass', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ query }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error || `Overpass proxy error ${res.status}`);
   }
-  throw lastErr;
+  return res.json();
 }
 
 

@@ -165,19 +165,18 @@ class OrbitControls extends EventDispatcher {
         this.update();
     }
 
-    // Slide target in the XZ ground plane.
-    // Compute right/forward from spherical.theta — always current, no matrix needed.
+    // Pan: move camera AND target together by identical world-space vector.
+    // Offset (camera - target) is unchanged → update() sees no angle change → no rotation.
     _pan(deltaX, deltaY) {
         const dist  = this.object.position.distanceTo(this.target);
         const scale = dist * Math.tan(this.object.fov * Math.PI / 360)
                       * 2 / this.domElement.clientHeight * this.panSpeed;
         const t = this.spherical.theta;
-        // right = perpendicular to look direction in XZ plane
-        const right   = new Vector3( Math.cos(t), 0, -Math.sin(t));
-        // forward = horizontal look direction in XZ plane
-        const forward = new Vector3(-Math.sin(t), 0, -Math.cos(t));
-        this.target.addScaledVector(right,    -deltaX * scale);
-        this.target.addScaledVector(forward,   deltaY * scale);
+        const panVec = new Vector3()
+            .addScaledVector(new Vector3( Math.cos(t), 0, -Math.sin(t)), -deltaX * scale)
+            .addScaledVector(new Vector3(-Math.sin(t), 0, -Math.cos(t)),  deltaY * scale);
+        this.target.add(panVec);
+        this.object.position.add(panVec);
     }
 
     onPointerUp() {

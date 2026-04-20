@@ -286,11 +286,11 @@ export function toggleAxes() {
 }
 
 export function updateGridVisibility(forceMode) {
-  const mode      = forceMode ?? state.currentMode;
-  const inView    = (mode === '2d') && !state.mapTileGroup;
-  const hasDN     = (getDesignNorthAngle() ?? 0) !== 0;
-  const showDG    = inView && hasDN  && !!state.designGridManager?.grids?.size;
-  const showCAD   = inView && !showDG;
+  const mode    = forceMode ?? state.currentMode;
+  const noTiles = !state.mapTileGroup;
+  const hasDN   = (getDesignNorthAngle() ?? 0) !== 0;
+  const showDG  = (mode === '2d') && noTiles && hasDN && !!state.designGridManager?.grids?.size;
+  const showCAD = noTiles && !showDG;
   if (state.gridHelper)      state.gridHelper.visible      = showCAD;
   if (state.gridHelperMinor) state.gridHelperMinor.visible = showCAD;
   if (state.designGridManager) state.designGridManager.setVisible(showDG);

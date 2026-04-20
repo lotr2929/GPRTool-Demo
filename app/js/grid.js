@@ -44,7 +44,7 @@ export function updateSceneHelpers(siteSpan) {
   state.gridHelper = new THREE.GridHelper(gridSize, divisions, 0x2a4a30, 0x4a6a50);
   state.gridHelper.material.opacity     = 1.0;
   state.gridHelper.material.transparent = false;
-  state.gridHelper.visible = (state.currentMode === '2d');
+  state.gridHelper.visible = true; // visible in both 2D and 3D
   state.scene.add(state.gridHelper);
 
   // Minor grid — subdivisions within major cells
