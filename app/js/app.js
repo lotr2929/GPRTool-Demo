@@ -1353,7 +1353,7 @@
     initProjects();
 
     // Shared onLayersLoaded callback — used by both OSM and CADMapper importers
-    const onLayersLoaded = async (layerGroups, dxfFile) => {
+    const onLayersLoaded = async (layerGroups, dxfFile, osmAddress = null) => {
         // Clear existing context geometry and reset .gpr state
         if (state.cadmapperGroup) {
           scene.remove(state.cadmapperGroup);
@@ -1449,7 +1449,11 @@
         // ── Create initial .gpr file ───────────────────────────────────────
         if (hasRealWorldAnchor()) {
           const anchor   = getRealWorldAnchor();
-          const siteName = dxfFile ? dxfFile.name.replace(/\.dxf$/i, '') : 'Untitled Site';
+          const siteName = dxfFile
+            ? dxfFile.name.replace(/\.dxf$/i, '')
+            : osmAddress
+              ? `OSM — ${osmAddress}`
+              : 'Untitled Site';
           try {
             await createInitialGPR({
               siteName,

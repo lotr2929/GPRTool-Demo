@@ -155,19 +155,13 @@ export function showSaveProjectDialog({ blob, defaultName, lat, lng, dxfFilename
             </select>
           </div>
           <div id="spd-error" style="font-size:11px;color:#e06060;min-height:14px;"></div>
-          <div style="display:flex;gap:8px;justify-content:space-between;align-items:center;margin-top:4px;">
-            <button id="spd-manage" style="background:none;border:none;
-              color:var(--accent-mid,#4a8a4a);font-size:11px;
-              padding:0;cursor:pointer;text-decoration:underline;">
-              Manage projects…</button>
-            <div style="display:flex;gap:8px;">
+          <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:4px;">
               <button id="spd-skip2" style="background:none;border:1px solid var(--chrome-border);
                 border-radius:4px;color:var(--text-secondary);font-size:12px;
                 padding:6px 16px;cursor:pointer;">Skip</button>
               <button id="spd-save" style="background:var(--accent-mid,#4a8a4a);color:#fff;
                 border:none;border-radius:4px;font-size:12px;padding:6px 20px;cursor:pointer;">
                 Save</button>
-            </div>
           </div>
         </div>
       </div>`;
@@ -189,10 +183,6 @@ export function showSaveProjectDialog({ blob, defaultName, lat, lng, dxfFilename
 
     overlay.querySelector('#spd-skip').addEventListener('click',  () => close(false));
     overlay.querySelector('#spd-skip2').addEventListener('click', () => close(false));
-    overlay.querySelector('#spd-manage').addEventListener('click', () => {
-      close(false);
-      showProjectsModal(() => {});
-    });
     overlay.querySelector('#spd-save').addEventListener('click', async () => {
       const name  = nameInput.value.trim() || defaultName;
       const mode  = overlay.querySelector('input[name="spd-mode"]:checked')?.value;
@@ -403,7 +393,17 @@ async function loadProjectList() {
             overflow:hidden;text-overflow:ellipsis;">${p.site_name}${boundary}</div>
           <div style="font-size:11px;color:var(--text-secondary);margin-top:2px;">
             ${date}${size ? ` &middot; ${size}` : ''}</div>
-        </div>`;
+        </div>
+        <button class="rp-inspect-btn" title="Show contents"
+          style="background:none;border:none;color:var(--text-secondary);
+          cursor:pointer;font-size:12px;padding:4px 6px;flex-shrink:0;">&#9660;</button>`;
+
+      // Contents panel (hidden by default)
+      const contentsPanel = document.createElement('div');
+      contentsPanel.style.cssText = `display:none;padding:6px 16px 8px 52px;
+        font-size:11px;color:var(--text-secondary);border-bottom:1px solid var(--chrome-border);
+        background:var(--chrome-panel-alt,#f5f5f0);`;
+      contentsPanel.innerHTML = `<span style="opacity:0.5;">Loading contents…</span>`;
 
       row.querySelector('.rp-open-row').addEventListener('click', async () => {
         hideProjectsModal();
@@ -413,7 +413,31 @@ async function loadProjectList() {
         }
       });
 
+      // Inspect button — expand/collapse contents
+      row.querySelector('.rp-inspect-btn').addEventListener('click', async (e) => {
+        e.stopPropagation();
+        const btn = e.currentTarget;
+        const isOpen = contentsPanel.style.display !== 'none';
+        contentsPanel.style.display = isOpen ? 'none' : 'block';
+        btn.innerHTML = isOpen ? '&#9660;' : '&#9650;';
+        if (!isOpen && contentsPanel.dataset.loaded !== 'true') {
+          const files = p.gpr_contents;
+          if (files && files.length) {
+            contentsPanel.innerHTML = files.map(f =>
+              `<div style="display:flex;justify-content:space-between;padding:2px 0;">
+                <span style="color:var(--text-primary);">&#128196; ${f.name}</span>
+                <span>${(f.size_bytes/1024).toFixed(1)} KB</span>
+              </div>`
+            ).join('');
+          } else {
+            contentsPanel.innerHTML = `<span style="opacity:0.5;">Contents not available — re-save to populate.</span>`;
+          }
+          contentsPanel.dataset.loaded = 'true';
+        }
+      });
+
       listEl.appendChild(row);
+      listEl.appendChild(contentsPanel);
     }
 
     // Select-all toggle

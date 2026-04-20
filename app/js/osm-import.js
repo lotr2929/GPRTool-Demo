@@ -631,7 +631,8 @@ async function runImport() {
     }
 
     closeModal();
-    _callbacks.onLayersLoaded(layerGroups, null);
+    const addressVal = document.getElementById('osm-address')?.value?.trim();
+    _callbacks.onLayersLoaded(layerGroups, null, addressVal || null);
 
     // Terrain + contours: disabled pending optimisation (causes main thread freeze)
     // TODO: move to Web Worker or add a separate "Load Terrain" button

@@ -32,6 +32,29 @@ async function sbFetch(path, opts = {}) {
   return { ok: res.ok, status: res.status, data: text ? JSON.parse(text) : null };
 }
 
+// ── Extract file list from base64 .gpr (ZIP) ─────────────────────────────
+// Returns array of { name, size_bytes } for each file in the zip.
+// Uses the ZIP local file header format — no full decompression needed.
+async function extractGPRContents(gpr_data_b64) {
+  try {
+    const binary = Buffer.from(gpr_data_b64, 'base64');
+    const contents = [];
+    let offset = 0;
+    while (offset < binary.length - 4) {
+      const sig = binary.readUInt32LE(offset);
+      if (sig !== 0x04034b50) break; // local file header signature
+      const compSize   = binary.readUInt32LE(offset + 18);
+      const uncompSize = binary.readUInt32LE(offset + 22);
+      const nameLen    = binary.readUInt16LE(offset + 26);
+      const extraLen   = binary.readUInt16LE(offset + 28);
+      const name       = binary.slice(offset + 30, offset + 30 + nameLen).toString('utf8');
+      if (!name.endsWith('/')) contents.push({ name, size_bytes: uncompSize });
+      offset += 30 + nameLen + extraLen + compSize;
+    }
+    return contents;
+  } catch { return null; }
+}
+
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET,POST,OPTIONS');
@@ -44,7 +67,7 @@ export default async function handler(req, res) {
   // ── LIST ────────────────────────────────────────────────────────────────
   if (req.method === 'GET' && action === 'list') {
     const { ok, data, status } = await sbFetch(
-      'gpr_projects?select=id,folder,site_name,dxf_filename,file_size_bytes,has_boundary,wgs84_lat,wgs84_lng,created_at,updated_at&order=updated_at.desc'
+      'gpr_projects?select=id,folder,site_name,dxf_filename,file_size_bytes,has_boundary,wgs84_lat,wgs84_lng,gpr_contents,created_at,updated_at&order=updated_at.desc'
     );
     if (!ok) return res.status(status).json({ error: 'Failed to list projects', detail: data });
     return res.status(200).json({ projects: data });
@@ -66,10 +89,13 @@ export default async function handler(req, res) {
 
     if (!site_name || !gpr_data) return res.status(400).json({ error: 'site_name and gpr_data required' });
 
+    const gpr_contents = await extractGPRContents(gpr_data);
+
     const payload = {
       folder:       body.folder ?? 'GPR Projects',
       site_name, dxf_filename, gpr_data, file_size_bytes,
       has_boundary: !!has_boundary, wgs84_lat, wgs84_lng,
+      gpr_contents,
       updated_at: new Date().toISOString(),
     };
 
