@@ -320,10 +320,6 @@
       state.renderer.domElement.releasePointerCapture(e.pointerId);
     });
 
-    state.renderer.domElement.addEventListener('contextmenu', e => {
-      if (state.zoomRectStart) { e.preventDefault(); return; } // suppress during zoom rect drag
-    });
-
     state.renderer.domElement.addEventListener('dblclick', e => {
       e.preventDefault();
       handleBoundaryDblClick();
@@ -358,10 +354,15 @@
     document.body.appendChild(_vpCtx);
 
     let _vpCtxX = 0, _vpCtxY = 0;
+    let _vpCtxDownX = 0, _vpCtxDownY = 0;
+    state.renderer.domElement.addEventListener('pointerdown', e => {
+      if (e.button === 2) { _vpCtxDownX = e.clientX; _vpCtxDownY = e.clientY; }
+    });
     state.renderer.domElement.addEventListener('contextmenu', e => {
       e.preventDefault();
+      // Suppress menu if pointer moved more than 4px (i.e. was a pan drag, not a click)
+      if (Math.hypot(e.clientX - _vpCtxDownX, e.clientY - _vpCtxDownY) > 4) return;
       _vpCtxX = e.clientX; _vpCtxY = e.clientY;
-      // Clamp to viewport edges
       const w = 178, h = 120;
       _vpCtx.style.left    = Math.min(e.clientX, window.innerWidth  - w - 4) + 'px';
       _vpCtx.style.top     = Math.min(e.clientY, window.innerHeight - h - 4) + 'px';
