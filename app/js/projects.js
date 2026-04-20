@@ -97,11 +97,12 @@ export async function deleteProject(id) {
 }
 
 // ── Save Project Dialog ───────────────────────────────────────────────────
-// Shows after every import. User names the project and chooses save/overwrite/skip.
+// OS-convention Save As: name field at top, existing projects as a file list below.
+// Clicking an existing project fills the name field. Saving with a matching name
+// triggers a confirmation before overwriting.
 
 export function showSaveProjectDialog({ blob, defaultName, lat, lng, dxfFilename }) {
   return new Promise(async (resolve) => {
-    // Fetch existing projects for overwrite list
     let existing = [];
     try { existing = await listProjects(); } catch (_) {}
 
@@ -111,105 +112,104 @@ export function showSaveProjectDialog({ blob, defaultName, lat, lng, dxfFilename
 
     overlay.innerHTML = `
       <div style="background:var(--chrome-panel);border:1px solid var(--chrome-border);
-        border-radius:6px;width:420px;max-width:95vw;
+        border-radius:6px;width:460px;max-width:95vw;max-height:80vh;
+        display:flex;flex-direction:column;
         box-shadow:0 8px 32px rgba(0,0,0,0.25);
         font-family:var(--font,'Outfit',sans-serif);color:var(--text-primary);overflow:hidden;">
+
         <div style="padding:11px 16px;background:var(--chrome-dark,#1e3d1e);
-          display:flex;align-items:center;gap:8px;">
-          <svg width="14" height="14" viewBox="0 0 16 16" fill="none"
-            stroke="#fff" stroke-width="1.4">
+          display:flex;align-items:center;gap:8px;flex-shrink:0;">
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="#fff" stroke-width="1.4">
             <path d="M2 3.5h4l1.5 2H14V13H2V3.5z"/>
           </svg>
           <span style="font-size:13px;font-weight:600;color:#fff;flex:1;">Save Project</span>
           <button id="spd-skip" style="background:none;border:none;color:rgba(255,255,255,0.5);
             cursor:pointer;font-size:18px;line-height:1;padding:2px 6px;">&#x2715;</button>
         </div>
-        <div style="padding:16px 18px 18px;display:flex;flex-direction:column;gap:12px;">
-          <div>
-            <label style="font-size:11px;color:var(--text-secondary);display:block;margin-bottom:4px;">
-              Site name</label>
+
+        <!-- File list (existing projects) -->
+        <div id="spd-list" style="flex:1;overflow-y:auto;border-bottom:1px solid var(--chrome-border);
+          min-height:120px;max-height:260px;">
+          ${existing.length
+            ? existing.map(p => `
+              <div class="spd-row" data-id="${p.id}" data-name="${p.site_name.replace(/"/g,'&quot;')}"
+                style="display:flex;align-items:center;gap:10px;padding:8px 14px;
+                cursor:pointer;border-bottom:1px solid var(--chrome-border);">
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="none"
+                  stroke="var(--accent-mid,#4a8a4a)" stroke-width="1.3">
+                  <path d="M2 3h4l1.5 2H14v8H2V3z"/>
+                </svg>
+                <span style="flex:1;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
+                  ${p.site_name}</span>
+                <span style="font-size:10px;color:var(--text-secondary);">
+                  ${new Date(p.updated_at).toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'2-digit'})}</span>
+              </div>`).join('')
+            : `<div style="padding:20px;text-align:center;font-size:12px;color:var(--text-secondary);">
+                No existing projects</div>`}
+        </div>
+
+        <!-- Name field + buttons -->
+        <div style="padding:12px 14px;display:flex;flex-direction:column;gap:10px;flex-shrink:0;">
+          <div style="display:flex;align-items:center;gap:8px;">
+            <label style="font-size:11px;color:var(--text-secondary);white-space:nowrap;">
+              File name:</label>
             <input id="spd-name" type="text" value="${defaultName}"
-              style="width:100%;box-sizing:border-box;background:var(--chrome-input);
-              border:1px solid var(--chrome-border);border-radius:4px;
-              color:var(--text-primary);font-size:13px;padding:6px 10px;outline:none;"/>
+              style="flex:1;background:var(--chrome-input);border:1px solid var(--chrome-border);
+              border-radius:4px;color:var(--text-primary);font-size:12px;
+              padding:5px 8px;outline:none;"/>
           </div>
-          <div style="display:flex;flex-direction:column;gap:6px;">
-            <label style="display:flex;align-items:center;gap:8px;font-size:12px;cursor:pointer;">
-              <input type="radio" name="spd-mode" value="new" checked
-                style="accent-color:var(--accent-mid,#4a8a4a);"/> Save as new project
-            </label>
-            <label style="display:flex;align-items:center;gap:8px;font-size:12px;cursor:pointer;">
-              <input type="radio" name="spd-mode" value="overwrite"
-                ${existing.length ? '' : 'disabled'}
-                style="accent-color:var(--accent-mid,#4a8a4a);"/>
-              Overwrite existing project
-            </label>
-            <select id="spd-existing" disabled
-              style="margin-left:22px;font-size:12px;background:var(--chrome-input);
-              border:1px solid var(--chrome-border);border-radius:4px;
-              color:var(--text-primary);padding:4px 8px;outline:none;
-              ${existing.length ? '' : 'opacity:0.4;'}">
-              ${existing.map(p => `<option value="${p.id}">${p.site_name} — ${
-                new Date(p.updated_at).toLocaleDateString('en-GB',{day:'numeric',month:'short'})
-              }</option>`).join('')}
-            </select>
-          </div>
-          <div id="spd-error" style="font-size:11px;color:#e06060;min-height:14px;"></div>
-          <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:4px;">
-              <button id="spd-skip2" style="background:none;border:1px solid var(--chrome-border);
-                border-radius:4px;color:var(--text-secondary);font-size:12px;
-                padding:6px 16px;cursor:pointer;">Skip</button>
-              <button id="spd-save" style="background:var(--accent-mid,#4a8a4a);color:#fff;
-                border:none;border-radius:4px;font-size:12px;padding:6px 20px;cursor:pointer;">
-                Save</button>
+          <div id="spd-error" style="font-size:11px;color:#e06060;min-height:14px;display:none;"></div>
+          <div style="display:flex;gap:8px;justify-content:flex-end;">
+            <button id="spd-cancel" style="background:none;border:1px solid var(--chrome-border);
+              border-radius:4px;color:var(--text-secondary);font-size:12px;
+              padding:5px 16px;cursor:pointer;">Cancel</button>
+            <button id="spd-save" style="background:var(--accent-mid,#4a8a4a);color:#fff;
+              border:none;border-radius:4px;font-size:12px;padding:5px 20px;cursor:pointer;">
+              Save</button>
           </div>
         </div>
       </div>`;
 
     document.body.appendChild(overlay);
 
-    const nameInput  = overlay.querySelector('#spd-name');
-    const selectEl   = overlay.querySelector('#spd-existing');
-    const radios     = overlay.querySelectorAll('input[name="spd-mode"]');
+    const nameInput = overlay.querySelector('#spd-name');
+    const errEl     = overlay.querySelector('#spd-error');
+    let selectedId  = null; // ID of clicked existing project (null = save as new)
 
-    // On open: if overwrite is pre-selected, populate name from first existing project
-    const initialMode = overlay.querySelector('input[name="spd-mode"]:checked')?.value;
-    if (initialMode === 'overwrite' && existing.length) {
-      nameInput.value = existing[0].site_name;
-    }
-
-    radios.forEach(r => r.addEventListener('change', () => {
-      selectEl.disabled = r.value !== 'overwrite' || !existing.length;
-      // When switching to overwrite, populate name from selected existing project
-      if (r.value === 'overwrite' && selectEl.value) {
-        const match = existing.find(p => p.id === selectEl.value);
-        if (match) nameInput.value = match.site_name;
-      }
-    }));
-
-    // Also update name when overwrite dropdown selection changes
-    selectEl.addEventListener('change', () => {
-      const mode = overlay.querySelector('input[name="spd-mode"]:checked')?.value;
-      if (mode === 'overwrite') {
-        const match = existing.find(p => p.id === selectEl.value);
-        if (match) nameInput.value = match.site_name;
-      }
+    // Clicking a row fills the name field and marks it selected
+    overlay.querySelectorAll('.spd-row').forEach(row => {
+      row.addEventListener('mouseover', () => row.style.background = 'var(--chrome-hover)');
+      row.addEventListener('mouseout',  () => {
+        row.style.background = row.dataset.id === selectedId
+          ? 'var(--accent-dark,#1e3d1e)' : '';
+      });
+      row.addEventListener('click', () => {
+        // Deselect previous
+        overlay.querySelectorAll('.spd-row').forEach(r => r.style.background = '');
+        selectedId = row.dataset.id;
+        nameInput.value = row.dataset.name;
+        row.style.background = 'var(--accent-dark,#1e3d1e)';
+      });
     });
 
-    const close = (save) => {
-      document.body.removeChild(overlay);
-      resolve(save);
-    };
+    const close = (saved) => { document.body.removeChild(overlay); resolve(saved); };
 
-    overlay.querySelector('#spd-skip').addEventListener('click',  () => close(false));
-    overlay.querySelector('#spd-skip2').addEventListener('click', () => close(false));
+    overlay.querySelector('#spd-skip').addEventListener('click',   () => close(false));
+    overlay.querySelector('#spd-cancel').addEventListener('click', () => close(false));
+
     overlay.querySelector('#spd-save').addEventListener('click', async () => {
-      const name  = nameInput.value.trim() || defaultName;
-      const mode  = overlay.querySelector('input[name="spd-mode"]:checked')?.value;
-      const overId = mode === 'overwrite' ? selectEl.value : null;
+      const name    = nameInput.value.trim() || defaultName;
       const saveBtn = overlay.querySelector('#spd-save');
-      saveBtn.disabled = true;
-      saveBtn.textContent = 'Saving…';
+
+      // Check if name matches an existing project (case-insensitive)
+      const match = existing.find(p => p.site_name.toLowerCase() === name.toLowerCase());
+      const overId = selectedId ?? match?.id ?? null;
+
+      // Confirmation only when overwriting
+      if (overId && !confirm(`Overwrite "${name}"?`)) return;
+
+      saveBtn.disabled = true; saveBtn.textContent = 'Saving\u2026';
+      errEl.style.display = 'none';
       try {
         await saveProject(blob, {
           id:           overId ?? undefined,
@@ -222,15 +222,13 @@ export function showSaveProjectDialog({ blob, defaultName, lat, lng, dxfFilename
         });
         close(true);
       } catch (e) {
-        saveBtn.disabled = false;
-        saveBtn.textContent = 'Save';
-        const errEl = overlay.querySelector('#spd-error');
-        if (errEl) errEl.textContent = 'Save failed: ' + e.message;
+        saveBtn.disabled = false; saveBtn.textContent = 'Save';
+        errEl.textContent = 'Save failed: ' + e.message;
+        errEl.style.display = 'block';
       }
     });
 
-    nameInput.focus();
-    nameInput.select();
+    nameInput.focus(); nameInput.select();
   });
 }
 
