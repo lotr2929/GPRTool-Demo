@@ -154,6 +154,7 @@ export function showSaveProjectDialog({ blob, defaultName, lat, lng, dxfFilename
               }</option>`).join('')}
             </select>
           </div>
+          <div id="spd-error" style="font-size:11px;color:#e06060;min-height:14px;"></div>
           <div style="display:flex;gap:8px;justify-content:space-between;align-items:center;margin-top:4px;">
             <button id="spd-manage" style="background:none;border:none;
               color:var(--accent-mid,#4a8a4a);font-size:11px;
@@ -196,17 +197,26 @@ export function showSaveProjectDialog({ blob, defaultName, lat, lng, dxfFilename
       const name  = nameInput.value.trim() || defaultName;
       const mode  = overlay.querySelector('input[name="spd-mode"]:checked')?.value;
       const overId = mode === 'overwrite' ? selectEl.value : null;
+      const saveBtn = overlay.querySelector('#spd-save');
+      saveBtn.disabled = true;
+      saveBtn.textContent = 'Saving…';
       try {
         await saveProject(blob, {
           id:           overId ?? undefined,
           site_name:    name,
+          folder:       'GPR Projects',
           dxf_filename: dxfFilename,
           has_boundary: false,
           wgs84_lat:    lat,
           wgs84_lng:    lng,
         });
-      } catch (e) { console.warn('[GPR] save failed', e); }
-      close(true);
+        close(true);
+      } catch (e) {
+        saveBtn.disabled = false;
+        saveBtn.textContent = 'Save';
+        const errEl = overlay.querySelector('#spd-error');
+        if (errEl) errEl.textContent = 'Save failed: ' + e.message;
+      }
     });
 
     nameInput.focus();
