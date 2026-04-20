@@ -165,16 +165,19 @@ class OrbitControls extends EventDispatcher {
         this.update();
     }
 
-    // Slide target in the XZ ground plane along camera-relative axes.
-    // Right = camera X axis. Forward = worldUp × right (stays horizontal).
+    // Slide target in the XZ ground plane.
+    // Compute right/forward from spherical.theta — always current, no matrix needed.
     _pan(deltaX, deltaY) {
-        const dist = this.object.position.distanceTo(this.target);
+        const dist  = this.object.position.distanceTo(this.target);
         const scale = dist * Math.tan(this.object.fov * Math.PI / 360)
                       * 2 / this.domElement.clientHeight * this.panSpeed;
-        const right   = new Vector3().setFromMatrixColumn(this.object.matrix, 0);
-        const forward = new Vector3().crossVectors(right, new Vector3(0, 1, 0)).normalize();
-        this.target.addScaledVector(right,   -deltaX * scale);
-        this.target.addScaledVector(forward,  deltaY * scale);
+        const t = this.spherical.theta;
+        // right = perpendicular to look direction in XZ plane
+        const right   = new Vector3( Math.cos(t), 0, -Math.sin(t));
+        // forward = horizontal look direction in XZ plane
+        const forward = new Vector3(-Math.sin(t), 0, -Math.cos(t));
+        this.target.addScaledVector(right,    -deltaX * scale);
+        this.target.addScaledVector(forward,   deltaY * scale);
     }
 
     onPointerUp() {

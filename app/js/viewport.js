@@ -243,7 +243,7 @@ export function switchMode(mode) {
     state.camera   = state.camera3D;
     state.controls = state.controls3D;
     clearSurfaceCanvasOutline();
-    setGridVisible(false);  // grid hidden in 3D (Design Grid also hidden)
+    if (state.gridHelper) state.gridHelper.visible = true;
     if (state.axesHelper) state.axesHelper.visible = true;
     if (state.axesYLine)  state.axesYLine.visible  = true;
     const target = state.importedModel

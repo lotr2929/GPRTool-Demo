@@ -83,9 +83,9 @@ const MODAL_HTML = `
           style="width:110px;background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.25);
           border-radius:4px;color:#fff;font-size:11px;padding:4px 8px;outline:none;">
       </div>
-      <select id="osm-radius" style="font-size:11px;background:rgba(255,255,255,0.1);
-        border:1px solid rgba(255,255,255,0.25);border-radius:4px;padding:4px 8px;
-        color:#fff;outline:none;">
+      <select id="osm-radius" style="font-size:11px;background:var(--chrome-input,#fff);
+        border:1px solid var(--chrome-border);border-radius:4px;padding:4px 8px;
+        color:var(--text-primary,#222);outline:none;">
         <option value="250">250 m</option>
         <option value="500" selected>500 m</option>
         <option value="750">750 m</option>
