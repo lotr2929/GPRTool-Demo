@@ -147,13 +147,31 @@ function _injectHUD() {
   hud.innerHTML = `<span id="cesium-alt"></span>`;
   document.getElementById('cesium-container')?.appendChild(hud);
 }
-  el.textContent = alt < 1000
-    ? `Alt ${alt.toFixed(0)} m`
-    : `Alt ${(alt / 1000).toFixed(2)} km`;
-}
 
 export const getCesiumViewer = () => _viewer;
 export const isCesiumReady   = () => _ready;
+
+// ── Exclusive render state switching ──────────────────────────────────────
+// Cesium and Three.js are two separate rendering states — never both visible.
+
+/** Activate Cesium — hide Three.js canvas completely. */
+export function showCesiumView() {
+  const cesiumEl = document.getElementById('cesium-container');
+  const canvas   = document.getElementById('three-canvas');
+  if (cesiumEl) cesiumEl.style.display = 'block';
+  if (canvas)   canvas.style.display   = 'none';
+}
+
+/** Activate Three.js — hide Cesium completely. */
+export function showThreeJSView() {
+  const cesiumEl = document.getElementById('cesium-container');
+  const canvas   = document.getElementById('three-canvas');
+  if (cesiumEl) cesiumEl.style.display = 'none';
+  if (canvas) {
+    canvas.style.display = 'block';
+    window.dispatchEvent(new Event('resize')); // recalculate renderer dimensions
+  }
+}
 
 // ── Camera view presets ───────────────────────────────────────────────────
 
@@ -230,31 +248,6 @@ function cesiumClearLotBoundary_internal() {
   if (_viewer && _lotBoundaryEntity) {
     _viewer.entities.remove(_lotBoundaryEntity);
     _lotBoundaryEntity = null;
-  }
-}
-
-// ── View toggling ─────────────────────────────────────────────────────────
-// GPRTool runs two renderers: Cesium (OSM / real-world context) and Three.js
-// (CADMapper geometry + design overlays). Only one is active at a time.
-
-/** Switch viewport to Cesium — fully removes Three.js canvas from event chain. */
-export function showCesiumView() {
-  const cesiumEl = document.getElementById('cesium-container');
-  const canvas   = document.getElementById('three-canvas');
-  if (cesiumEl) cesiumEl.style.zIndex = '2';
-  // display:none is required — visibility:hidden still lets event listeners fire
-  if (canvas) { canvas.style.display = 'none'; }
-}
-
-/** Switch viewport to Three.js — restores Three.js canvas above Cesium. */
-export function showThreeJSView() {
-  const cesiumEl = document.getElementById('cesium-container');
-  const canvas   = document.getElementById('three-canvas');
-  if (cesiumEl) cesiumEl.style.zIndex = '1';
-  if (canvas) {
-    canvas.style.display = 'block';
-    // Fire a resize event so Three.js renderer recalculates dimensions
-    window.dispatchEvent(new Event('resize'));
   }
 }
 
