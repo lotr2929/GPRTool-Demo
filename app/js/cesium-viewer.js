@@ -100,20 +100,25 @@ export const isCesiumReady   = () => _ready;
 // GPRTool runs two renderers: Cesium (OSM / real-world context) and Three.js
 // (CADMapper geometry + design overlays). Only one is active at a time.
 
-/** Switch viewport to Cesium — hides Three.js canvas, raises Cesium z-index. */
+/** Switch viewport to Cesium — fully removes Three.js canvas from event chain. */
 export function showCesiumView() {
   const cesiumEl = document.getElementById('cesium-container');
   const canvas   = document.getElementById('three-canvas');
   if (cesiumEl) cesiumEl.style.zIndex = '2';
-  if (canvas) { canvas.style.visibility = 'hidden'; canvas.style.pointerEvents = 'none'; }
+  // display:none is required — visibility:hidden still lets event listeners fire
+  if (canvas) { canvas.style.display = 'none'; }
 }
 
-/** Switch viewport to Three.js — shows Three.js canvas above Cesium. */
+/** Switch viewport to Three.js — restores Three.js canvas above Cesium. */
 export function showThreeJSView() {
   const cesiumEl = document.getElementById('cesium-container');
   const canvas   = document.getElementById('three-canvas');
   if (cesiumEl) cesiumEl.style.zIndex = '1';
-  if (canvas) { canvas.style.visibility = 'visible'; canvas.style.pointerEvents = ''; }
+  if (canvas) {
+    canvas.style.display = 'block';
+    // Fire a resize event so Three.js renderer recalculates dimensions
+    window.dispatchEvent(new Event('resize'));
+  }
 }
 
 // ── Camera ────────────────────────────────────────────────────────────────
