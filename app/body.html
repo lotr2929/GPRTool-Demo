@@ -150,7 +150,10 @@
 
   <!-- Center: Viewport -->
   <main id="viewport" class="viewport">
-    <canvas id="three-canvas"></canvas>
+    <!-- Cesium viewer — Google Photorealistic 3D Tiles (z-index 1, background) -->
+    <div id="cesium-container" style="position:absolute;inset:0;width:100%;height:100%;z-index:1;"></div>
+    <!-- Three.js canvas — CADMapper design overlays (z-index 2, above Cesium) -->
+    <canvas id="three-canvas" style="position:absolute;inset:0;width:100%;height:100%;display:block;z-index:2;"></canvas>
 
     <!-- North Point 2D compass
          #np-container : position + size only — NEVER rotated

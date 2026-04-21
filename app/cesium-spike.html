@@ -4,22 +4,17 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>GPRTool — Cesium Spike</title>
-
-  <!-- CesiumJS 1.115 from CDN — no npm install needed -->
   <script src="https://cesium.com/downloads/cesiumjs/releases/1.115/Build/Cesium/Cesium.js"></script>
   <link href="https://cesium.com/downloads/cesiumjs/releases/1.115/Build/Cesium/Widgets/widgets.css" rel="stylesheet">
-
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
-    html, body, #cesiumContainer { width: 100%; height: 100%; overflow: hidden; background: #000; }
-
+    html, body, #cesiumContainer { width: 100%; height: 100%; overflow: hidden; background: #111; }
     #hud {
       position: absolute; top: 12px; left: 12px; z-index: 100;
-      background: rgba(0,0,0,0.72); color: #e8f0e8;
+      background: rgba(0,0,0,0.75); color: #e8f0e8;
       font: 12px/1.6 'Segoe UI', sans-serif;
       padding: 12px 16px; border-radius: 6px;
-      border: 1px solid rgba(255,255,255,0.12);
-      max-width: 320px;
+      border: 1px solid rgba(255,255,255,0.12); max-width: 340px;
     }
     #hud h2 { font-size: 13px; color: #90c890; margin-bottom: 8px; }
     #hud .row { display: flex; gap: 8px; margin-top: 8px; flex-wrap: wrap; }
@@ -34,111 +29,97 @@
       background: rgba(0,0,0,0.6); color: #aaa;
       font: 11px monospace; padding: 5px 10px; border-radius: 4px;
     }
-    /* suppress Cesium ion credit widget — we're using Google data, not ion */
     .cesium-widget-credits { display: none !important; }
   </style>
 </head>
 <body>
-
 <div id="cesiumContainer"></div>
-
 <div id="hud">
   <h2>GPRTool — Cesium + Google 3D Tiles Spike</h2>
   <div id="status">Initialising…</div>
   <div class="row">
-    <button onclick="flyTo(SITES.beaufort)">30 Beaufort St Perth</button>
+    <button onclick="flyTo(SITES.beaufort)">30 Beaufort St</button>
     <button onclick="flyTo(SITES.perth_cbd)">Perth CBD</button>
-    <button onclick="toggleTileset()">Toggle 3D Tiles</button>
+    <button onclick="toggleTileset()">Toggle Tiles</button>
   </div>
-  <div class="row" style="margin-top:4px; font-size:10px; color:#888;">
-    Drag: orbit &nbsp;|&nbsp; Right-drag / scroll: zoom &nbsp;|&nbsp; Middle-drag: pan
+  <div class="row" style="margin-top:4px;font-size:10px;color:#888;">
+    Drag: orbit &nbsp;|&nbsp; Scroll: zoom &nbsp;|&nbsp; Right-drag: pan
   </div>
 </div>
-
 <div id="coords">Lat — &nbsp; Lng — &nbsp; Alt —</div>
-
 <script>
-// ── Test sites ─────────────────────────────────────────────────────────────
 const SITES = {
-  beaufort: { lat: -31.9393, lng: 115.8614, alt: 150,
-              heading: 30, pitch: -25,
-              label: '30 Beaufort St, Perth' },
-  perth_cbd: { lat: -31.9505, lng: 115.8605, alt: 800,
-               heading: 0, pitch: -40,
-               label: 'Perth CBD' },
+  beaufort:  { lat: -31.9393, lng: 115.8614, alt: 200, heading: 30,  pitch: -28, label: '30 Beaufort St Perth' },
+  perth_cbd: { lat: -31.9505, lng: 115.8605, alt: 900, heading: 0,   pitch: -40, label: 'Perth CBD' },
 };
 
-// ── Suppress ion warning — we use Google data only ─────────────────────────
+// Suppress ion token warning — we only use Google data
 Cesium.Ion.defaultAccessToken = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJqdGkiOiJlYWE1OWUxNy1mMDA1LTQyMjctODc4OS1lMTY4NWY4YWY3MDIiLCJpZCI6MjYxMzMsInNjb3BlcyI6WyJhc3IiXSwiaWF0IjoxNTg2NDI3NDQ0fQ.bFb2CiDXLMlxJFgRkjX8NOvXCHYLBi5oEdqSEH4gUTY';
 
-// ── Viewer ─────────────────────────────────────────────────────────────────
+// ── Viewer init — globe hidden immediately ─────────────────────────────────
 const viewer = new Cesium.Viewer('cesiumContainer', {
-  // Disable all default Cesium ion imagery — we use Google tiles
-  imageryProvider: false,
-  baseLayerPicker: false,
-  geocoder: false,
-  homeButton: false,
-  sceneModePicker: false,
-  navigationHelpButton: false,
-  animation: false,
-  timeline: false,
-  fullscreenButton: false,
-  vrButton: false,
-  infoBox: false,
-  selectionIndicator: false,
-  // Enable terrain (Cesium World Terrain requires ion token — we'll add separately)
-  terrainProvider: new Cesium.EllipsoidTerrainProvider(),
+  imageryProvider:        false,
+  baseLayerPicker:        false,
+  geocoder:               false,
+  homeButton:             false,
+  sceneModePicker:        false,
+  navigationHelpButton:   false,
+  animation:              false,
+  timeline:               false,
+  fullscreenButton:       false,
+  vrButton:               false,
+  infoBox:                false,
+  selectionIndicator:     false,
+  terrainProvider:        new Cesium.EllipsoidTerrainProvider(),
 });
 
-// Remove default skybox / atmosphere for cleaner load
-viewer.scene.skyBox.show = false;
-viewer.scene.backgroundColor = new Cesium.Color(0.05, 0.05, 0.05, 1);
+// Hide globe NOW — not inside try/catch — so blue sphere never appears
+viewer.scene.globe.show          = false;
+viewer.scene.skyAtmosphere.show  = false;
+viewer.scene.skyBox.show         = false;
+viewer.scene.backgroundColor     = new Cesium.Color(0.06, 0.06, 0.06, 1.0);
 
 let _tileset = null;
-let _googleKey = null;
 
-// ── Load Google Maps API key + Google Photorealistic 3D Tiles ──────────────
+// ── Boot ───────────────────────────────────────────────────────────────────
 async function init() {
   setStatus('Fetching Google Maps API key…');
   try {
     const res = await fetch('/api/maps-key');
-    if (!res.ok) throw new Error(`maps-key ${res.status}`);
+    if (!res.ok) throw new Error('maps-key endpoint returned ' + res.status);
     const { key } = await res.json();
-    _googleKey = key;
-    setStatus('Loading Google Photorealistic 3D Tiles…');
+    if (!key) throw new Error('GOOGLE_MAPS_API_KEY env var not set on Vercel');
     await loadGoogleTiles(key);
   } catch (err) {
-    setStatus('ERROR: ' + err.message, true);
-    console.error('[Cesium spike]', err);
+    setStatus('Init error: ' + (err.message ?? String(err)), true);
+    console.error('[Cesium spike init]', err);
   }
 }
 
+// ── Load Google Photorealistic 3D Tiles via direct URL ────────────────────
+// Using fromUrl() directly — avoids version-specific helper function issues.
+// Requires "Map Tiles API" enabled in Google Cloud Console for your key.
 async function loadGoogleTiles(key) {
+  setStatus('Loading Google Photorealistic 3D Tiles…');
   try {
-    // Google Photorealistic 3D Tiles — photogrammetric mesh, real buildings + terrain
-    // Requires "Map Tiles API" enabled in Google Cloud Console (same key as Maps JS API)
-    _tileset = await Cesium.createGooglePhotorealistic3DTileset(key, {
-      onlyUsingWithGoogleSupportedAPI: false,
+    const url = `https://tile.googleapis.com/v1/3dtiles/root.json?key=${key}`;
+    _tileset = await Cesium.Cesium3DTileset.fromUrl(url, {
+      maximumScreenSpaceError: 8,   // lower = sharper, more tiles fetched
     });
     viewer.scene.primitives.add(_tileset);
-
-    // Enable depth testing so tiles occlude correctly
-    viewer.scene.globe.show = false; // hide Cesium globe — Google tiles handle everything
-    viewer.scene.skyAtmosphere.show = false;
-
-    setStatus('✓ Google 3D Tiles loaded — flying to site…');
+    setStatus('✓ Google 3D Tiles loaded — flying to 30 Beaufort St…');
     flyTo(SITES.beaufort);
   } catch (err) {
-    // Fallback error — likely Map Tiles API not enabled for this key
-    const msg = err.message?.includes('403')
-      ? 'API key error: enable "Map Tiles API" in Google Cloud Console for this key'
-      : err.message;
-    setStatus('3D Tiles error: ' + msg, true);
+    let msg = err?.message ?? String(err);
+    if (!msg || msg === 'undefined') msg = 'Check DevTools console for details';
+    if (String(err).includes('403') || msg.includes('403'))
+      msg = '403 Forbidden — enable "Map Tiles API" in Google Cloud Console for this key';
+    setStatus('Tiles error: ' + msg, true);
     console.error('[Google 3D Tiles]', err);
   }
 }
 
-// ── Camera controls ────────────────────────────────────────────────────────
+// ── Camera ─────────────────────────────────────────────────────────────────
 function flyTo(site) {
   viewer.camera.flyTo({
     destination: Cesium.Cartesian3.fromDegrees(site.lng, site.lat, site.alt),
@@ -147,58 +128,42 @@ function flyTo(site) {
       pitch:   Cesium.Math.toRadians(site.pitch   ?? -30),
       roll:    0,
     },
-    duration: 2.5,
+    duration: 2.0,
   });
-  setStatus(`Flying to ${site.label}`);
+  setStatus('Flying to ' + site.label);
 }
 
 function toggleTileset() {
-  if (!_tileset) { setStatus('Tileset not loaded yet.', true); return; }
+  if (!_tileset) { setStatus('Tileset not loaded.', true); return; }
   _tileset.show = !_tileset.show;
-  setStatus(_tileset.show ? 'Tileset visible' : 'Tileset hidden');
+  setStatus(_tileset.show ? 'Tiles visible' : 'Tiles hidden');
 }
 
 // ── Coordinate readout ─────────────────────────────────────────────────────
-// Updates bottom-left display with camera position on each frame
 viewer.scene.postRender.addEventListener(() => {
   const pos = viewer.camera.positionCartographic;
   if (!pos) return;
-  const lat = Cesium.Math.toDegrees(pos.latitude).toFixed(6);
-  const lng = Cesium.Math.toDegrees(pos.longitude).toFixed(6);
-  const alt = (pos.height).toFixed(1);
   document.getElementById('coords').textContent =
-    `Camera  Lat ${lat}  Lng ${lng}  Alt ${alt} m`;
+    `Camera  Lat ${Cesium.Math.toDegrees(pos.latitude).toFixed(6)}` +
+    `  Lng ${Cesium.Math.toDegrees(pos.longitude).toFixed(6)}` +
+    `  Alt ${pos.height.toFixed(1)} m`;
 });
 
-// ── Helpers ────────────────────────────────────────────────────────────────
+// ── Status helper ──────────────────────────────────────────────────────────
 function setStatus(msg, isError = false) {
   const el = document.getElementById('status');
   el.textContent = msg;
   el.style.color = isError ? '#e06060' : '#90c890';
 }
 
-// ── Boot ───────────────────────────────────────────────────────────────────
 init();
 </script>
-
 <!--
-  NOTES FOR BOON:
-  ───────────────
-  If you get a 403 error, you need to enable "Map Tiles API" in Google Cloud Console:
-    1. Go to https://console.cloud.google.com
-    2. APIs & Services → Library → search "Map Tiles API" → Enable
-    3. Same API key already in GOOGLE_MAPS_API_KEY env var should work
+  If you see "403 Forbidden":
+    Google Cloud Console → APIs & Services → Library → "Map Tiles API" → Enable
+    Same key as GOOGLE_MAPS_API_KEY. Takes ~2 min to propagate.
 
-  What this spike tests:
-  ✓ Google Photorealistic 3D Tiles load correctly
-  ✓ Buildings are real photogrammetric geometry (not extrusions)
-  ✓ Terrain is real (captured from aerial survey)
-  ✓ Camera anchors accurately to WGS84 lat/lng
-  ✓ Cesium.Cartesian3.fromDegrees() is the coordinate bridge to real-world.js
-
-  If it works → this replaces osm-import.js 3D geometry entirely.
-  real-world.js UTM math is unchanged — WGS84 is WGS84.
+  Open DevTools (F12) Console for the raw error if status still says "undefined".
 -->
-
 </body>
 </html>

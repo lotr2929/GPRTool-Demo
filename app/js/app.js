@@ -47,6 +47,7 @@
     import { updateSceneHelpers, showGridSpacingPopup, majorCellSize } from './grid.js';
     import { initGeo, latlonToMetres, extractCoordinates, computeBBox, computePolygonArea, computePolygonPerimeter, loadMapTiles, clearMapTiles } from './geo.js';
     import { initUI, showFeedback } from './ui.js';
+    import { initCesiumViewer, getCesiumViewer, flyToSite, showLotBoundary, clearLotBoundary as cesiumClearLotBoundary, isCesiumReady, showCesiumView, showThreeJSView, startBoundaryPick } from './cesium-viewer.js';
 
     /* ============================================================
        LOAD HEADER + BODY
@@ -58,6 +59,11 @@
     document.getElementById('body-container').innerHTML = bodyHTML;
     initUI();
     initGeo({ onMapCleared: () => setGridVisible(state.currentMode === '2d') });
+
+    // ── Cesium viewer — boots asynchronously; tiles load in background ────
+    initCesiumViewer('cesium-container').catch(err =>
+      console.warn('[Cesium init]', err)
+    );
     // initSurfaces wired after fitSurfaceCamera etc. are defined (below)
 
     /* ── ui.js handles: clock, alarm, showFeedback, section collapse ─── */
@@ -1352,6 +1358,51 @@
     initSiteSelection({ drawSiteBoundary, onSiteSelected: (lat, lng) => showSitePin(lat, lng) });
     initProjects();
 
+    // ── Cesium boundary draw ───────────────────────────────────────────────
+    // Called when "Draw Lot Boundary" is clicked in Cesium (OSM) mode.
+    // Uses cesium-viewer.js startBoundaryPick() — user clicks on 3D tile surface.
+    async function _startCesiumBoundaryDraw() {
+      showFeedback('Click the 3D scene to place boundary vertices \u2014 double-click to finish', 0);
+      startBoundaryPick(
+        pt => showFeedback(
+          `Point placed (${pt.lat.toFixed(5)}, ${pt.lng.toFixed(5)}) \u2014 continue or double-click to finish`, 0
+        ),
+        async pts => {
+          if (pts.length < 3) { showFeedback('Need at least 3 points to close boundary'); return; }
+          const coords = pts.map(p => [p.lng, p.lat]);
+          coords.push(coords[0]); // close GeoJSON ring
+          const geojson = {
+            type: 'Feature',
+            properties: { source: 'gprtool_cesium', drawn_at: new Date().toISOString() },
+            geometry: { type: 'Polygon', coordinates: [coords] },
+          };
+          showLotBoundary(geojson); // orange polyline on 3D tiles
+          showFeedback('Lot boundary drawn \u2014 saving\u2026', 0);
+          try {
+            await addBoundaryToGPR(geojson);
+            const anchor = getRealWorldAnchor();
+            const blob   = await getActiveGPRBlob();
+            if (blob && anchor) {
+              saveProject(blob, {
+                site_name: state._activeProjectName ?? 'GPR Project',
+                has_boundary: true,
+                wgs84_lat: anchor.lat,
+                wgs84_lng: anchor.lng,
+              }).catch(e => console.warn('[GPR] boundary save:', e));
+            }
+            const btn = document.getElementById('draw-boundary-btn');
+            if (btn) {
+              btn.textContent = '\u2713 Lot Boundary \u2014 Re-draw\u2026';
+              btn.style.background = 'var(--accent-dark,#2d6b2d)';
+            }
+            showFeedback('Lot boundary saved');
+          } catch (err) {
+            showFeedback('Boundary drawn but save failed: ' + err.message);
+          }
+        }
+      );
+    }
+
     // Shared onLayersLoaded callback — used by both OSM and CADMapper importers
     const onLayersLoaded = async (layerGroups, dxfFile, osmAddress = null, osmGeoJSON = null) => {
         // Clear existing context geometry and reset .gpr state
@@ -1490,14 +1541,23 @@
                 });
               }
             } catch (_) { /* non-critical */ }
-            buildBoundaryPanel(wgs84Bounds, false);
-            showFeedback('Project saved \u2014 draw lot boundary to complete site setup');
+            buildBoundaryPanel(wgs84Bounds, false, !dxfFile ? _startCesiumBoundaryDraw : null);
+
+            // ── OSM path: fly Cesium to the real-world site location ───
+            if (!dxfFile && anchor) {
+              showCesiumView();
+              flyToSite(anchor.lat, anchor.lng, 350);
+              showFeedback('Site loaded — draw lot boundary to continue');
+            } else {
+              showThreeJSView();
+              showFeedback('Project saved \u2014 draw lot boundary to complete site setup');
+            }
           } catch (err) {
             console.warn('[GPR] .gpr creation failed:', err);
-            showFeedback(`CADMapper context loaded \u2014 ${Object.keys(layerGroups).length} layers`);
+            showFeedback(`Context loaded \u2014 ${Object.keys(layerGroups ?? {}).length} layers`);
           }
         } else {
-          showFeedback(`Context loaded \u2014 ${Object.keys(layerGroups).length} layers: ${Object.keys(layerGroups).join(', ')}`);
+          showFeedback(`Context loaded \u2014 ${Object.keys(layerGroups ?? {}).length} layers`);
         }
     };  // end onLayersLoaded
 

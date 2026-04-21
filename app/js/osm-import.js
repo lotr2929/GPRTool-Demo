@@ -46,66 +46,72 @@ let _callbacks = null;
 let THREE      = null;  // set from callbacks at init, used by all geometry builders
 
 // ── Modal HTML ────────────────────────────────────────────────────────────
+// Simplified: no embedded Google Maps picker — Cesium IS the map now.
+// User enters address or clicks coordinates, then imports.
 const MODAL_HTML = `
 <div id="osm-overlay" style="
   display:none; position:fixed; inset:0; z-index:1100;
-  background:var(--chrome-panel); flex-direction:column;">
+  background:rgba(0,0,0,0.55); align-items:flex-start; justify-content:center;
+  padding-top:80px;">
 
-  <!-- Header bar -->
-  <div style="padding:10px 16px; border-bottom:1px solid var(--chrome-border);
-              display:flex; align-items:center; gap:10px; flex-shrink:0;
-              background:var(--chrome-dark,#1e3d1e);">
-    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="#fff" stroke-width="1.4">
-      <circle cx="8" cy="8" r="6"/><path d="M2 8h12M8 2c-2 2-3 4-3 6s1 4 3 6M8 2c2 2 3 4 3 6s-1 4-3 6"/>
-    </svg>
-    <h3 style="margin:0; font-size:13px; font-weight:600; color:#fff;">Import from OpenStreetMap</h3>
-    <span style="font-size:10px;color:rgba(255,255,255,0.5);">Click map to set site location</span>
+  <div style="
+    background:var(--chrome-panel,#2a2a2a); border:1px solid var(--chrome-border);
+    border-radius:8px; padding:20px 24px; min-width:480px; max-width:560px;
+    box-shadow:0 8px 32px rgba(0,0,0,0.5);">
 
-    <!-- Address search -->
-    <div style="display:flex;gap:6px;margin-left:16px;flex:1;max-width:400px;">
-      <input id="osm-address" type="text" placeholder="Search address\u2026"
-        style="flex:1;background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.25);
-        border-radius:4px;color:#fff;font-size:12px;padding:5px 10px;outline:none;"
-        onkeydown="if(event.key==='Enter') document.getElementById('osm-search-btn').click()">
-      <button id="osm-search-btn" style="background:var(--accent-mid,#4a8a4a);color:#fff;border:none;
-        border-radius:4px;font-size:12px;padding:5px 12px;cursor:pointer;">Search</button>
+    <!-- Header -->
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px;">
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="#90c890" stroke-width="1.4">
+        <circle cx="8" cy="8" r="6"/><path d="M2 8h12M8 2c-2 2-3 4-3 6s1 4 3 6M8 2c2 2 3 4 3 6s-1 4-3 6"/>
+      </svg>
+      <h3 style="margin:0;font-size:13px;font-weight:600;color:var(--text-primary,#eee);">Import from OpenStreetMap</h3>
+      <button id="osm-close" style="margin-left:auto;background:none;border:none;
+        color:var(--text-secondary,#aaa);cursor:pointer;font-size:18px;line-height:1;">&#x2715;</button>
     </div>
 
-    <!-- Controls row -->
-    <div style="display:flex;align-items:center;gap:10px;margin-left:8px;">
+    <!-- Address search -->
+    <div style="display:flex;gap:8px;margin-bottom:12px;">
+      <input id="osm-address" type="text" placeholder="Search address\u2026"
+        style="flex:1;background:var(--chrome-input,#fff);border:1px solid var(--chrome-border);
+        border-radius:4px;color:var(--text-primary,#222);font-size:12px;padding:6px 10px;outline:none;"
+        onkeydown="if(event.key==='Enter') document.getElementById('osm-search-btn').click()">
+      <button id="osm-search-btn" style="background:var(--accent-mid,#4a8a4a);color:#fff;border:none;
+        border-radius:4px;font-size:12px;padding:6px 14px;cursor:pointer;">Search</button>
+    </div>
+
+    <!-- Coordinates + radius -->
+    <div style="display:flex;gap:10px;align-items:center;margin-bottom:14px;flex-wrap:wrap;">
       <div style="display:flex;align-items:center;gap:6px;">
-        <span style="font-size:10px;color:rgba(255,255,255,0.6);">Lat</span>
+        <span style="font-size:11px;color:var(--text-secondary,#aaa);">Lat</span>
         <input id="osm-lat" type="number" step="any" placeholder="\u2014"
-          style="width:100px;background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.25);
-          border-radius:4px;color:#fff;font-size:11px;padding:4px 8px;outline:none;">
-        <span style="font-size:10px;color:rgba(255,255,255,0.6);">Lng</span>
+          style="width:110px;background:var(--chrome-input,#fff);border:1px solid var(--chrome-border);
+          border-radius:4px;color:var(--text-primary,#222);font-size:11px;padding:5px 8px;outline:none;">
+      </div>
+      <div style="display:flex;align-items:center;gap:6px;">
+        <span style="font-size:11px;color:var(--text-secondary,#aaa);">Lng</span>
         <input id="osm-lng" type="number" step="any" placeholder="\u2014"
-          style="width:110px;background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.25);
-          border-radius:4px;color:#fff;font-size:11px;padding:4px 8px;outline:none;">
+          style="width:120px;background:var(--chrome-input,#fff);border:1px solid var(--chrome-border);
+          border-radius:4px;color:var(--text-primary,#222);font-size:11px;padding:5px 8px;outline:none;">
       </div>
       <select id="osm-radius" style="font-size:11px;background:var(--chrome-input,#fff);
-        border:1px solid var(--chrome-border);border-radius:4px;padding:4px 8px;
+        border:1px solid var(--chrome-border);border-radius:4px;padding:5px 8px;
         color:var(--text-primary,#222);outline:none;">
         <option value="250">250 m</option>
         <option value="500" selected>500 m</option>
         <option value="750">750 m</option>
         <option value="1000">1 km</option>
       </select>
-      <span id="osm-status" style="font-size:11px;color:#90c890;min-width:140px;"></span>
+    </div>
+
+    <!-- Status + Import -->
+    <div style="display:flex;align-items:center;gap:12px;">
+      <span id="osm-status" style="font-size:11px;color:#90c890;flex:1;"></span>
       <button id="osm-import-btn" style="
         background:var(--accent-mid,#4a8a4a);color:#fff;border:none;
-        border-radius:4px;font-size:12px;padding:6px 18px;cursor:pointer;white-space:nowrap;">
+        border-radius:4px;font-size:12px;padding:7px 20px;cursor:pointer;">
         Import
       </button>
-      <button id="osm-close" style="background:none;border:none;color:rgba(255,255,255,0.6);
-        cursor:pointer;font-size:20px;line-height:1;padding:2px 6px;">&#x2715;</button>
     </div>
-  </div>
-
-  <!-- Map fills all remaining space -->
-  <div id="osm-map" style="flex:1;min-height:0;background:#1a1a1a;position:relative;">
-    <div id="osm-map-loading" style="position:absolute;inset:0;display:flex;align-items:center;
-      justify-content:center;color:#aaa;font-size:13px;">Loading map\u2026</div>
   </div>
 </div>`;
 
@@ -122,9 +128,8 @@ export function initOSMImport(callbacks) {
 }
 
 function openModal() {
-  setStatus('Click the map to set your site location.');
+  setStatus('Enter an address or paste coordinates, then click Import.');
   document.getElementById('osm-overlay').style.display = 'flex';
-  _initPickerMap();
 }
 function closeModal() {
   document.getElementById('osm-overlay').style.display = 'none';
@@ -133,66 +138,18 @@ function closeModal() {
 // ── Address search using Nominatim ───────────────────────────────────────
 async function searchAddress() {
   const q = document.getElementById('osm-address').value.trim();
-  if (!q || !_pickerMap) return;
+  if (!q) return;
   setStatus('Searching\u2026');
   try {
     const res  = await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(q)}&format=json&limit=1`);
     const data = await res.json();
     if (!data.length) { setStatus('Address not found.'); return; }
     const lat = parseFloat(data[0].lat), lng = parseFloat(data[0].lon);
-    _pickerMap.setCenter({ lat, lng });
-    _pickerMap.setZoom(17);
-    setStatus('Navigate and click your exact site.');
+    document.getElementById('osm-lat').value = lat.toFixed(7);
+    document.getElementById('osm-lng').value = lng.toFixed(7);
+    setStatus(`Found: ${data[0].display_name.slice(0, 60)}\u2026 — click Import.`);
   } catch (err) {
     setStatus('Search failed: ' + err.message);
-  }
-}
-
-// ── Google Maps click-to-locate picker ───────────────────────────────────
-let _pickerMap    = null;
-let _pickerMarker = null;
-let _mapsReady    = false;
-
-async function _initPickerMap() {
-  if (_pickerMap) {
-    setTimeout(() => google.maps.event.trigger(_pickerMap, 'resize'), 50);
-    return;
-  }
-  const loading = document.getElementById('osm-map-loading');
-  try {
-    const res = await fetch('/api/maps-key');
-    if (!res.ok) throw new Error('maps-key ' + res.status);
-    const { key } = await res.json();
-    if (!_mapsReady) {
-      await new Promise((resolve, reject) => {
-        const s = document.createElement('script');
-        s.src = `https://maps.googleapis.com/maps/api/js?key=${key}&callback=__osmMapsReady`;
-        s.onerror = () => reject(new Error('Maps script failed'));
-        window.__osmMapsReady = () => { _mapsReady = true; resolve(); };
-        document.head.appendChild(s);
-      });
-    }
-    if (loading) loading.style.display = 'none';
-    _pickerMap = new google.maps.Map(document.getElementById('osm-map'), {
-      center: { lat: -31.9505, lng: 115.8605 }, zoom: 14,
-      mapTypeId: google.maps.MapTypeId.HYBRID,
-      mapTypeControl: false, streetViewControl: false, fullscreenControl: false,
-    });
-    _pickerMap.addListener('click', e => {
-      const lat = e.latLng.lat(), lng = e.latLng.lng();
-      document.getElementById('osm-lat').value = lat.toFixed(7);
-      document.getElementById('osm-lng').value = lng.toFixed(7);
-      if (_pickerMarker) _pickerMarker.setMap(null);
-      _pickerMarker = new google.maps.Marker({
-        position: e.latLng, map: _pickerMap,
-        icon: { path: google.maps.SymbolPath.CIRCLE, scale: 8,
-          fillColor: '#4a8a4a', fillOpacity: 1, strokeColor: '#fff', strokeWeight: 2 },
-      });
-      setStatus('Location set \u2014 select radius and click Import.');
-    });
-  } catch (err) {
-    if (loading) loading.textContent = 'Map unavailable \u2014 enter coordinates manually.';
-    console.warn('[OSM picker]', err);
   }
 }
 function setStatus(msg, isError = false) {

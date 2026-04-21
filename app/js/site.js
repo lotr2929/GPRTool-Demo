@@ -212,7 +212,7 @@ function _clearBdPreview() {
 }
 
 // ── Lot boundary panel (right panel, after DXF import) ────────────────────
-export function buildBoundaryPanel(wgs84Bounds, hasExisting = false) {
+export function buildBoundaryPanel(wgs84Bounds, hasExisting = false, onDraw = null) {
   document.getElementById('lot-boundary-section')?.remove();
 
   const section = document.createElement('div');
@@ -234,7 +234,7 @@ export function buildBoundaryPanel(wgs84Bounds, hasExisting = false) {
   btn.style.cssText = `width:100%;padding:7px 12px;font-size:12px;cursor:pointer;
     background:${hasExisting ? 'var(--accent-dark,#2d6b2d)' : 'var(--accent-mid,#4a8a4a)'};
     color:#fff;border:none;border-radius:4px;text-align:left;`;
-  btn.addEventListener('click', () => startBoundaryDraw());
+  btn.addEventListener('click', () => onDraw ? onDraw() : startBoundaryDraw());
   row.appendChild(btn);
   section.appendChild(row);
 
