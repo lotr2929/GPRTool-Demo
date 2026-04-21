@@ -156,20 +156,29 @@ export function setCesium2D() {
 }
 
 /**
- * Drop to street level at the current camera lat/lng.
- * Pitches camera near-horizontal at ~2 m above ground.
+ * Activate street-level mode: user clicks a point on the 3D scene,
+ * camera descends to 1.7m above that point facing horizontally.
+ * Shows a crosshair cursor and status hint until the user clicks.
  */
 export function setCesiumStreetLevel() {
   if (!_viewer) return;
-  const pos = _viewer.camera.positionCartographic;
-  // Sample terrain height at current position, then position 2m above it
-  const carto = new Cesium.Cartographic(pos.longitude, pos.latitude);
-  Cesium.sampleTerrainMostDetailed(
-    _viewer.terrainProvider, [carto]
-  ).then(updated => {
-    const groundAlt = (updated[0]?.height ?? 0) + 2;
+  // Show hint in HUD
+  const alt = document.getElementById('cesium-alt');
+  if (alt) alt.textContent = 'Click to set street viewpoint\u2026';
+  _viewer.container.style.cursor = 'crosshair';
+
+  const handler = new Cesium.ScreenSpaceEventHandler(_viewer.scene.canvas);
+  handler.setInputAction(e => {
+    handler.destroy();
+    _viewer.container.style.cursor = '';
+    const pos = _pickCartesian(e.position);
+    if (!pos) return;
+    const carto = Cesium.Cartographic.fromCartesian(pos);
+    // Descend to 1.7m above the picked surface point (eye height)
     _viewer.camera.flyTo({
-      destination: Cesium.Cartesian3.fromRadians(pos.longitude, pos.latitude, groundAlt),
+      destination: Cesium.Cartesian3.fromRadians(
+        carto.longitude, carto.latitude, carto.height + 1.7
+      ),
       orientation: {
         heading: _viewer.camera.heading,
         pitch:   Cesium.Math.toRadians(-5),
@@ -177,18 +186,7 @@ export function setCesiumStreetLevel() {
       },
       duration: 1.5,
     });
-  }).catch(() => {
-    // Fallback if terrain sampling unavailable — use fixed 5m altitude
-    _viewer.camera.flyTo({
-      destination: Cesium.Cartesian3.fromRadians(pos.longitude, pos.latitude, 5),
-      orientation: {
-        heading: _viewer.camera.heading,
-        pitch:   Cesium.Math.toRadians(-5),
-        roll:    0,
-      },
-      duration: 1.5,
-    });
-  });
+  }, Cesium.ScreenSpaceEventType.LEFT_CLICK);
 }
 
 /**

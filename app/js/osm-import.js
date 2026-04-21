@@ -147,22 +147,24 @@ function closeModal() {
   stopLocationPick();
 }
 
-// ── Address search using Nominatim — flies Cesium to result ──────────────
+// ── Address search via Google Geocoding API (server-side proxy) ───────────
+// Replaces Nominatim — Google returns building-level precision for AU addresses.
 async function searchAddress() {
   const q = document.getElementById('osm-address').value.trim();
   if (!q) return;
   setStatus('Searching\u2026');
   try {
-    const res  = await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(q)}&format=json&limit=1`);
+    const res  = await fetch(`/api/geocode?address=${encodeURIComponent(q)}`);
     const data = await res.json();
-    if (!data.length) { setStatus('Address not found.'); return; }
-    const lat = parseFloat(data[0].lat), lng = parseFloat(data[0].lon);
+    if (!res.ok || !data.results?.length) {
+      setStatus('Address not found' + (data.status ? ` (${data.status})` : '') + '.'); return;
+    }
+    const { lat, lng, display_name, precise } = data.results[0];
     document.getElementById('osm-lat').value = lat.toFixed(7);
     document.getElementById('osm-lng').value = lng.toFixed(7);
-    // Fly the Cesium viewer to the result so user can confirm visually
     const { flyToSite } = await import('./cesium-viewer.js');
-    flyToSite(lat, lng, 400);
-    setStatus(`Found \u2014 click the 3D map to refine, or Import now.`);
+    flyToSite(lat, lng, precise ? 200 : 400);
+    setStatus(`${precise ? '\u2713 Building found' : '\u26a0 Area result'} \u2014 ${display_name.slice(0, 55)}\u2026`);
   } catch (err) {
     setStatus('Search failed: ' + err.message);
   }
