@@ -101,14 +101,17 @@ export async function deleteProject(id) {
 // Clicking an existing project fills the name field. Saving with a matching name
 // triggers a confirmation before overwriting.
 
-export function showSaveProjectDialog({ blob, defaultName, lat, lng, dxfFilename }) {
+export function showSaveProjectDialog({ blob, blobGetter, defaultName, lat, lng, dxfFilename }) {
+  // blobGetter: optional function returning Promise<Blob> — used when blob isn't ready yet
+  // blob:       direct Blob — legacy path, still supported
   return new Promise(async (resolve) => {
-    let existing = [];
-    try { existing = await listProjects(); } catch (_) {}
-
+    // Show dialog shell immediately — don't block on listProjects()
     const overlay = document.createElement('div');
     overlay.style.cssText = `position:fixed;inset:0;z-index:1400;
       background:rgba(0,0,0,0.45);display:flex;align-items:center;justify-content:center;`;
+
+    // existing[] is populated async after dialog is shown
+    let existing = [];
 
     overlay.innerHTML = `
       <div style="background:var(--chrome-panel);border:1px solid var(--chrome-border);
@@ -127,25 +130,11 @@ export function showSaveProjectDialog({ blob, defaultName, lat, lng, dxfFilename
             cursor:pointer;font-size:18px;line-height:1;padding:2px 6px;">&#x2715;</button>
         </div>
 
-        <!-- File list (existing projects) -->
+        <!-- File list (existing projects) — populated async after dialog shows -->
         <div id="spd-list" style="flex:1;overflow-y:auto;border-bottom:1px solid var(--chrome-border);
           min-height:120px;max-height:260px;">
-          ${existing.length
-            ? existing.map(p => `
-              <div class="spd-row" data-id="${p.id}" data-name="${p.site_name.replace(/"/g,'&quot;')}"
-                style="display:flex;align-items:center;gap:10px;padding:8px 14px;
-                cursor:pointer;border-bottom:1px solid var(--chrome-border);">
-                <svg width="16" height="16" viewBox="0 0 16 16" fill="none"
-                  stroke="var(--accent-mid,#4a8a4a)" stroke-width="1.3">
-                  <path d="M2 3h4l1.5 2H14v8H2V3z"/>
-                </svg>
-                <span style="flex:1;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
-                  ${p.site_name}</span>
-                <span style="font-size:10px;color:var(--text-secondary);">
-                  ${new Date(p.updated_at).toLocaleString('en-GB',{day:'numeric',month:'short',year:'2-digit',hour:'2-digit',minute:'2-digit'})}</span>
-              </div>`).join('')
-            : `<div style="padding:20px;text-align:center;font-size:12px;color:var(--text-secondary);">
-                No existing projects</div>`}
+          <div id="spd-list-loading" style="padding:20px;text-align:center;font-size:12px;color:var(--text-secondary);">
+            Loading\u2026</div>
         </div>
 
         <!-- Name field + buttons -->
@@ -174,22 +163,41 @@ export function showSaveProjectDialog({ blob, defaultName, lat, lng, dxfFilename
 
     const nameInput = overlay.querySelector('#spd-name');
     const errEl     = overlay.querySelector('#spd-error');
-    let selectedId  = null; // ID of clicked existing project (null = save as new)
+    let selectedId  = null;
 
-    // Clicking a row fills the name field and marks it selected
-    overlay.querySelectorAll('.spd-row').forEach(row => {
-      row.addEventListener('mouseover', () => row.style.background = 'var(--chrome-hover)');
-      row.addEventListener('mouseout',  () => {
-        row.style.background = row.dataset.id === selectedId
-          ? 'var(--accent-dark,#1e3d1e)' : '';
+    // Fetch projects list async — populate the list when it arrives
+    listProjects().then(rows => {
+      existing = rows;
+      const listEl = overlay.querySelector('#spd-list');
+      if (!listEl) return;
+      listEl.innerHTML = rows.length
+        ? rows.map(p => `
+          <div class="spd-row" data-id="${p.id}" data-name="${p.site_name.replace(/"/g,'&quot;')}"
+            style="display:flex;align-items:center;gap:10px;padding:8px 14px;
+            cursor:pointer;border-bottom:1px solid var(--chrome-border);">
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none"
+              stroke="var(--accent-mid,#4a8a4a)" stroke-width="1.3">
+              <path d="M2 3h4l1.5 2H14v8H2V3z"/>
+            </svg>
+            <span style="flex:1;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
+              ${p.site_name}</span>
+            <span style="font-size:10px;color:var(--text-secondary);">
+              ${new Date(p.updated_at).toLocaleString('en-GB',{day:'numeric',month:'short',year:'2-digit',hour:'2-digit',minute:'2-digit'})}</span>
+          </div>`).join('')
+        : `<div style="padding:20px;text-align:center;font-size:12px;color:var(--text-secondary);">
+            No existing projects</div>`;
+      // Re-wire row clicks
+      listEl.querySelectorAll('.spd-row').forEach(row => {
+        row.addEventListener('click', () => {
+          listEl.querySelectorAll('.spd-row').forEach(r => r.style.background = '');
+          selectedId = row.dataset.id;
+          nameInput.value = row.dataset.name;
+          row.style.background = 'var(--accent-dark,#1e3d1e)';
+        });
       });
-      row.addEventListener('click', () => {
-        // Deselect previous
-        overlay.querySelectorAll('.spd-row').forEach(r => r.style.background = '');
-        selectedId = row.dataset.id;
-        nameInput.value = row.dataset.name;
-        row.style.background = 'var(--accent-dark,#1e3d1e)';
-      });
+    }).catch(() => {
+      const listEl = overlay.querySelector('#spd-list');
+      if (listEl) listEl.innerHTML = `<div style="padding:20px;text-align:center;font-size:12px;color:var(--text-secondary);">No existing projects</div>`;
     });
 
     const close = (saved) => { document.body.removeChild(overlay); resolve(saved); };
@@ -211,7 +219,10 @@ export function showSaveProjectDialog({ blob, defaultName, lat, lng, dxfFilename
       saveBtn.disabled = true; saveBtn.textContent = 'Saving\u2026';
       errEl.style.display = 'none';
       try {
-        await saveProject(blob, {
+        // Resolve blob — either direct or via lazy getter (blobGetter runs .gpr creation)
+        const resolvedBlob = blob ?? (blobGetter ? await blobGetter() : null);
+        if (!resolvedBlob) throw new Error('No project data to save');
+        await saveProject(resolvedBlob, {
           id:           overId ?? undefined,
           site_name:    name,
           folder:       'GPR Projects',

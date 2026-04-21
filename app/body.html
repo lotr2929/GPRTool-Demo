@@ -1,4 +1,16 @@
 <!-- Main Content Area -->
+<!-- Geolocation notification bar — shown once on load, just below header -->
+<div id="geo-bar" style="display:none;">
+  <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="5"/><line x1="8" y1="1" x2="8" y2="4"/><line x1="8" y1="12" x2="8" y2="15"/><line x1="1" y1="8" x2="4" y2="8"/><line x1="12" y1="8" x2="15" y2="8"/></svg>
+  <span id="geo-bar-msg">Allow location access to open the map at your current location?</span>
+  <input id="geo-bar-input" type="text" placeholder="Or type an address&#8230;" autocomplete="off"
+    style="flex:1;min-width:180px;max-width:320px;background:rgba(255,255,255,0.12);border:1px solid rgba(255,255,255,0.25);border-radius:3px;color:#fff;font-size:11px;padding:3px 8px;outline:none;"
+    onkeydown="if(event.key==='Enter')document.getElementById('geo-bar-go').click()">
+  <button id="geo-bar-go">Go</button>
+  <button id="geo-bar-allow">Allow location</button>
+  <button id="geo-bar-close" title="Close">&#x2715;</button>
+</div>
+
 <div id="main-container">
 
   <!-- Left Panel: Tools -->
@@ -9,29 +21,60 @@
     </div>
     <div class="panel-content">
 
-      <!-- SITE -->
+      <!-- PIPELINE STAGES -->
       <div class="command-section" id="section-site">
         <div class="section-header" data-section="site">
           <span>Site</span>
           <svg class="section-arrow" viewBox="0 0 10 6" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M1 1l4 4 4-4"/></svg>
         </div>
         <div class="section-body">
-          <button class="command-btn" id="importOSMBtn" title="Import site context from OpenStreetMap — free, global, no account required">
-            <svg class="tool-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><circle cx="8" cy="8" r="6"/><path d="M2 8h12M8 2c-2 2-3 4-3 6s1 4 3 6M8 2c2 2 3 4 3 6s-1 4-3 6"/></svg>
-            Import from OpenStreetMap&#8230;
-          </button>
-          <button class="command-btn" id="importCesiumBtn" title="Use current Cesium 3D view as site context — Google Photorealistic 3D Tiles">
-            <svg class="tool-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M8 2a6 6 0 1 0 0 12A6 6 0 0 0 8 2z"/><path d="M8 5v3l2 2"/><circle cx="8" cy="8" r="1.5" fill="currentColor"/></svg>
-            Import from Cesium&#8230;
-          </button>
-          <button class="command-btn" id="importCADMapperBtn" title="Import site context from CADMapper">
-            <svg class="tool-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M3 12h10M8 3v7M5 7l3 3 3-3"/><rect x="1.5" y="11" width="13" height="2.5" rx="0.5"/></svg>
-            Import from CADMapper&#8230;
-          </button>
-          <button class="command-btn btn-danger" id="clearSiteBtn" style="display:none" title="Remove current site and all content">
-            <svg class="tool-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M3 3l10 10M13 3L3 13"/></svg>
-            Clear Site
-          </button>
+
+          <!-- Stage 1: Locate Site -->
+          <div class="pipeline-stage" id="stage-locate" data-stage="pending">
+            <div class="stage-indicator">
+              <span class="stage-num">1</span>
+              <div class="stage-info">
+                <span class="stage-label">Locate Site</span>
+                <span class="stage-status" id="stage-locate-status">Set a location to begin</span>
+              </div>
+            </div>
+            <button class="command-btn stage-btn" id="importOSMBtn" title="Search address and fetch OSM map data">
+              <svg class="tool-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><circle cx="8" cy="8" r="6"/><path d="M2 8h12M8 2c-2 2-3 4-3 6s1 4 3 6M8 2c2 2 3 4 3 6s-1 4-3 6"/></svg>
+              Locate Site&#8230;
+            </button>
+          </div>
+
+          <!-- Stage 2: Extract Site Segment -->
+          <div class="pipeline-stage" id="stage-extract" data-stage="locked">
+            <div class="stage-indicator">
+              <span class="stage-num">2</span>
+              <div class="stage-info">
+                <span class="stage-label">Extract Site Segment</span>
+                <span class="stage-status" id="stage-extract-status">Complete stage 1 first</span>
+              </div>
+            </div>
+            <button class="command-btn stage-btn" id="extractSiteBtn" disabled title="Switch to 2D and draw a rectangle to extract the site segment">
+              <svg class="tool-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><rect x="2" y="2" width="12" height="12" rx="1"/><path d="M5 2v12M11 2v12M2 5h12M2 11h12"/></svg>
+              Extract Site Segment&#8230;
+            </button>
+          </div>
+
+          <!-- Dev tools — visible during development -->
+          <div style="border-top:1px solid var(--chrome-border);margin-top:8px;padding-top:8px;">
+            <button class="command-btn" id="importCesiumBtn" title="Use current Cesium view as site location">
+              <svg class="tool-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><circle cx="8" cy="6" r="3"/><path d="M8 9v6M5 12h6"/></svg>
+              Import from Cesium&#8230;
+            </button>
+            <button class="command-btn" id="importCADMapperBtn" title="Import site context from CADMapper DXF">
+              <svg class="tool-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M3 12h10M8 3v7M5 7l3 3 3-3"/><rect x="1.5" y="11" width="13" height="2.5" rx="0.5"/></svg>
+              Import from CADMapper&#8230;
+            </button>
+            <button class="command-btn btn-danger" id="clearSiteBtn" style="display:none" title="Remove current site and all content">
+              <svg class="tool-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M3 3l10 10M13 3L3 13"/></svg>
+              Clear Site
+            </button>
+          </div>
+
         </div>
       </div>
 

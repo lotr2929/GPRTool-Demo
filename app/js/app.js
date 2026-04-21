@@ -46,7 +46,7 @@
     import { loadOBJ, loadGLTF, loadIFC, addEdgeOverlay, detectAndApplyUnitScale } from './model.js';
     import { updateSceneHelpers, showGridSpacingPopup, majorCellSize } from './grid.js';
     import { initGeo, latlonToMetres, extractCoordinates, computeBBox, computePolygonArea, computePolygonPerimeter, loadMapTiles, clearMapTiles } from './geo.js';
-    import { initUI, showFeedback } from './ui.js';
+    import { initUI, showFeedback, setPipelineStatus, setStage } from './ui.js';
     import { initCesiumViewer, getCesiumViewer, flyToSite, showLotBoundary, clearLotBoundary as cesiumClearLotBoundary, isCesiumReady, showCesiumView, showThreeJSView, startBoundaryPick, stopLocationPick, setCesium2D, setCesiumStreetLevel, getCameraPosition, resetCesiumView } from './cesium-viewer.js';
 
     /* ============================================================
@@ -63,7 +63,6 @@
     // ── Cesium viewer — boots asynchronously; tiles load in background ────
     initCesiumViewer('cesium-container').then(() => {
       showCesiumView();
-      // Try geolocation first; fall back to Perth CBD
       if (navigator.geolocation) {
         navigator.geolocation.getCurrentPosition(
           pos => flyToSite(pos.coords.latitude, pos.coords.longitude, 800),
@@ -75,10 +74,66 @@
       }
     }).catch(err => console.warn('[Cesium init]', err));
 
+    // ── Geo-bar — shown on first load, requests location permission ────────
+    (function initGeoBar() {
+      const bar     = document.getElementById('geo-bar');
+      const msg     = document.getElementById('geo-bar-msg');
+      const input   = document.getElementById('geo-bar-input');
+      const goBtn   = document.getElementById('geo-bar-go');
+      const allowBtn= document.getElementById('geo-bar-allow');
+      const closeBtn= document.getElementById('geo-bar-close');
+      if (!bar) return;
+
+      // Show bar only if location not already granted
+      navigator.permissions?.query({ name: 'geolocation' }).then(perm => {
+        if (perm.state === 'granted') return; // already have it — Cesium already flew there
+        bar.style.display = 'flex';
+      }).catch(() => bar.style.display = 'flex'); // fallback if permissions API unavailable
+
+      const dismiss = () => { bar.style.display = 'none'; };
+
+      allowBtn.addEventListener('click', () => {
+        navigator.geolocation.getCurrentPosition(pos => {
+          flyToSite(pos.coords.latitude, pos.coords.longitude, 800);
+          dismiss();
+        }, () => { msg.textContent = 'Location access denied.'; setTimeout(dismiss, 2000); });
+      });
+
+      goBtn.addEventListener('click', async () => {
+        const q = input.value.trim();
+        if (!q) return;
+        try {
+          const res  = await fetch(`/api/geocode?address=${encodeURIComponent(q)}`);
+          const data = await res.json();
+          if (data.results?.length) {
+            const { lat, lng } = data.results[0];
+            flyToSite(lat, lng, 500);
+            dismiss();
+          } else {
+            msg.textContent = 'Address not found.';
+          }
+        } catch { msg.textContent = 'Search failed.'; }
+      });
+
+      input.addEventListener('keydown', e => { if (e.key === 'Enter') goBtn.click(); });
+      closeBtn.addEventListener('click', dismiss);
+    })();
+
     // ── Import from Cesium ─────────────────────────────────────────────────
     // Uses the current Cesium camera position as the site anchor.
     // Fetches OSM data for that location, saves .gpr with source:'cesium'.
     document.getElementById('importCesiumBtn')?.addEventListener('click', _importFromCesium);
+
+    // ── Extract Site Segment — Stage 2 ────────────────────────────────────
+    document.getElementById('extractSiteBtn')?.addEventListener('click', () => {
+      setCesium2D();                        // switch Cesium to top-down view
+      showThreeJSView();                    // raise Three.js canvas for rectangle picker
+      switchMode('2d');                     // switch Three.js to 2D orthographic
+      setStage('extract', 'active', 'Draw a rectangle to extract the site');
+      setPipelineStatus('Draw site rectangle\u2026', 'busy');
+      showFeedback('Drag to draw site rectangle \u2014 release to confirm', 0);
+      // TODO: Rectangle picker implementation — next session
+    });
 
     async function _importFromCesium() {
       const pos = getCameraPosition();
@@ -1539,55 +1594,55 @@
               ? `OSM — ${osmAddress}`
               : 'Untitled Site';
           state._activeProjectName = siteName;
-          try {
-            await createInitialGPR({
-              siteName,
-              reference: {
-                utm_zone:       anchor.zone,
-                utm_easting:    anchor.easting,
-                utm_northing:   anchor.northing,
-                utm_hemisphere: anchor.hemisphere,
-                wgs84_lat:      anchor.lat,
-                wgs84_lng:      anchor.lng,
-                scene_offset_x: centre.x,
-                scene_offset_z: centre.z,
-                site_span_m:    siteSpan,
-              },
-              design: {
-                design_north_angle: 0,
-                grid_spacing_m:     cellSize,
-                minor_divisions:    0,
-              },
-              dxfFile,
-              osmGeoJSON,
-            });
-            // ── Save Project dialog ────────────────────────────────────
-            try {
-              const blob = await getActiveGPRBlob();
-              if (blob) {
-                await showSaveProjectDialog({
-                  blob,
-                  defaultName: siteName,
-                  lat: anchor.lat,
-                  lng: anchor.lng,
-                  dxfFilename: dxfFile?.name ?? null,
-                });
-              }
-            } catch (_) { /* non-critical */ }
-            buildBoundaryPanel(wgs84Bounds, false, !dxfFile ? _startCesiumBoundaryDraw : null);
+          setPipelineStatus('Saving project\u2026', 'busy');
 
-            // ── OSM path: fly Cesium to the real-world site location ───
-            if (!dxfFile && anchor) {
-              showCesiumView();
-              flyToSite(anchor.lat, anchor.lng, 350);
-              showFeedback('Site loaded — draw lot boundary to continue');
-            } else {
-              showThreeJSView();
-              showFeedback('Project saved \u2014 draw lot boundary to complete site setup');
-            }
-          } catch (err) {
-            console.warn('[GPR] .gpr creation failed:', err);
-            showFeedback(`Context loaded \u2014 ${Object.keys(layerGroups ?? {}).length} layers`);
+          // ── Show save dialog IMMEDIATELY — .gpr creation runs lazily on Save ──
+          // blobGetter is called only when user clicks Save, not before.
+          showSaveProjectDialog({
+            blobGetter: async () => {
+              await createInitialGPR({
+                siteName,
+                reference: {
+                  utm_zone:       anchor.zone,
+                  utm_easting:    anchor.easting,
+                  utm_northing:   anchor.northing,
+                  utm_hemisphere: anchor.hemisphere,
+                  wgs84_lat:      anchor.lat,
+                  wgs84_lng:      anchor.lng,
+                  scene_offset_x: centre.x,
+                  scene_offset_z: centre.z,
+                  site_span_m:    siteSpan,
+                },
+                design: {
+                  design_north_angle: 0,
+                  grid_spacing_m:     cellSize,
+                  minor_divisions:    0,
+                },
+                dxfFile,
+                osmGeoJSON,
+              });
+              return getActiveGPRBlob();
+            },
+            defaultName: siteName,
+            lat: anchor.lat,
+            lng: anchor.lng,
+            dxfFilename: dxfFile?.name ?? null,
+          }).then(saved => {
+            setPipelineStatus(saved ? '\u2713 Project saved' : 'Ready', saved ? 'done' : 'idle');
+          }).catch(() => setPipelineStatus('Save failed', 'error'));
+
+          buildBoundaryPanel(wgs84Bounds, false, !dxfFile ? _startCesiumBoundaryDraw : null);
+
+          // ── OSM path: fly Cesium to site; CADMapper stays in Three.js ────
+          if (!dxfFile && anchor) {
+            showCesiumView();
+            flyToSite(anchor.lat, anchor.lng, 350);
+            setStage('locate', 'done', `\u2713 ${siteName}`);
+            setStage('extract', 'pending', 'Switch to 2D and extract site');
+          } else {
+            showThreeJSView();
+            setStage('locate', 'done', `\u2713 ${siteName}`);
+            setStage('extract', 'pending', 'Switch to 2D and extract site');
           }
         } else {
           showFeedback(`Context loaded \u2014 ${Object.keys(layerGroups ?? {}).length} layers`);

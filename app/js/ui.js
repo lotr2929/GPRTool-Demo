@@ -71,6 +71,32 @@ export function showFeedback(message, duration = 3000) {
   if (duration > 0) state.feedbackTimer = setTimeout(() => { el.textContent = 'Ready'; }, duration);
 }
 
+// ── Pipeline status chip (header, next to title) ──────────────────────────
+// States: 'idle' | 'busy' | 'done' | 'error'
+// Message is persistent until next call — unlike showFeedback which clears.
+
+export function setPipelineStatus(message, chipState = 'idle') {
+  const el = document.getElementById('pipeline-status');
+  if (!el) return;
+  el.textContent = message;
+  el.dataset.state = chipState;
+}
+
+/**
+ * Set pipeline stage state in the left panel.
+ * @param {'locate'|'extract'} stageId
+ * @param {'pending'|'active'|'done'|'locked'} stageState
+ * @param {string} [statusText]
+ */
+export function setStage(stageId, stageState, statusText) {
+  const el = document.getElementById(`stage-${stageId}`);
+  if (el) el.dataset.state = stageState;
+  const btn = el?.querySelector('.stage-btn');
+  if (btn) btn.disabled = (stageState === 'locked');
+  const statusEl = document.getElementById(`stage-${stageId}-status`);
+  if (statusEl && statusText !== undefined) statusEl.textContent = statusText;
+}
+
 // ── Init ──────────────────────────────────────────────────────────────────
 
 export function initUI() {
