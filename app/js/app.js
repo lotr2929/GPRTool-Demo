@@ -929,7 +929,11 @@
       document.getElementById('gpr-value').textContent               = '\u2014';
       document.getElementById('boundary-section')?.remove();
       clearLotBoundary();
-      resetCesiumView();   // reset Cesium to Perth overview, clear markers
+      resetCesiumView();
+      showCesiumView();        // return to globe after clearing
+      setPipelineStatus('', 'idle');
+      setStage('locate',  'pending', 'Set a location to begin');
+      setStage('extract', 'locked',  'Complete stage 1 first');
       showFeedback('Site cleared');
     });
 

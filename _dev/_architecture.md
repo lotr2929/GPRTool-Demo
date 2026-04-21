@@ -3,152 +3,201 @@ _Written: 21 Apr 2026. Update this when architecture changes._
 
 ---
 
-## Module Map
+## The Two Viewports — Exclusive, Never Concurrent
 
-### Entry point
-- `index.html` — loads CDN scripts (CesiumJS, JSZip, BVH), then `app.js` as ES module
-- `app.js` — monolithic orchestrator (~1650 lines). Imports all modules, wires events, owns the render loop
+GPRTool has exactly two rendering states. One active at a time. The switch
+functions in `cesium-viewer.js` are the ONLY correct way to change state.
 
-### Two rendering states (NEVER concurrent)
-GPRTool has exactly two viewport states. One at a time, no overlap.
+### Viewport 1 — Cesium (globe / location finding)
+- What it is: CesiumJS + Google Photorealistic 3D Tiles. Real-world context.
+- When active: `#cesium-container` display:block. `#three-canvas` display:none.
+  `#np-container` hidden. `#gizmo3d-overlay` hidden. `.mode-toggle-container` hidden.
+- Purpose: Navigate to site. Fly to address. Visual context only.
+- No design tools. No GPR calculation. No NPoint.
+- Switch on: `showCesiumView()` in cesium-viewer.js
 
-| State | Active when | Controls |
-|---|---|---|
-| **Cesium** | App loads; before OSM import | `cesium-viewer.js` |
-| **Three.js** | After OSM/CADMapper import | `app.js` render loop |
+### Viewport 2 — Three.js (design workspace)
+- What it is: Three.js WebGL canvas with OSM or CADMapper geometry.
+- When active: `#three-canvas` display:block. `#cesium-container` display:none.
+  `.mode-toggle-container` display:flex. NPoint managed by their own modules.
+- Purpose: Design, plant placement, GPR calculation.
+- Switch on: `showThreeJSView()` in cesium-viewer.js
 
-Switch functions in `cesium-viewer.js`:
-- `showCesiumView()` — shows `#cesium-container`, hides `#three-canvas`, `#np-container`, `.mode-toggle-container`, gizmoOverlay
-- `showThreeJSView()` — shows `#three-canvas`, hides `#cesium-container`. Does NOT touch NPoint — let NP modules manage themselves.
-
-### Viewport DOM (`body.html` → `#viewport`)
+### Viewport switch sequence (user workflow)
 ```
-#viewport (position:relative, overflow:hidden, isolation:isolate)
-  #cesium-container   (position:absolute, inset:0) ← Cesium globe
-  #three-canvas       (position:absolute, inset:0) ← Three.js WebGL canvas
-  #np-container       (SVG NPoint 2D, bottom-right) ← north-point-2d.js
-  #np-ctx-menu        (context menu for NPoint)
-  .mode-toggle-container  (top-right, z-index:1000) ← 2D/3D buttons
-  gizmoOverlay div    (injected by north-point-3d.js into #viewport)
+App opens → Cesium globe (rotating)
+   ↓ user clicks "① Locate Site…"
+OSM modal → address search → Overpass fetch → Three.js geometry builds
+   ↓ showThreeJSView() called from onLayersLoaded in app.js
+Three.js design workspace visible
+   ↓ user clicks "② Extract Segment…"
+2D mode → rectangle picker (TODO) → site.dxf + site_context.geojson extracted
 ```
-
-**Key z-index rule**: Cesium widget creates its own stacking context. `.mode-toggle-container` must be hidden when Cesium is active — NOT fought with z-index.
 
 ---
 
-## North Point — DO NOT CORRUPT
+## Viewport DOM Structure (`body.html → #viewport`)
 
-Two separate systems, both in `#viewport`:
+```
+#viewport  (position:relative, overflow:hidden, isolation:isolate)
+  ├── #cesium-container    position:absolute, inset:0  ← Cesium globe
+  ├── #three-canvas        position:absolute, inset:0  ← Three.js WebGL
+  ├── #np-container        bottom-right SVG compass    ← north-point-2d.js
+  ├── #np-ctx-menu         context menu for NPoint
+  ├── .mode-toggle-container  top-right, z-index:1000  ← 2D/3D buttons
+  └── #gizmo3d-overlay     injected by north-point-3d.js at init
+```
 
-### NPoint 2D (`north-point-2d.js` + `#np-container` SVG in body.html)
-- SVG compass — housing ring + TN needle
-- Draggable/resizable via mouse events
-- Visible: Two.js mode only
-- Shows in BOTH 2D and 3D Three.js modes
-- Rotates based on `designNorthAngle` and `globalNorthAngle`
-- `initNorthPoint2D(getState)` wired in `app.js`
-
-### Gizmo 3D (`north-point-3d.js` + `gizmoOverlay` div injected at init)
-- Canvas texture rendered via scissor into Three.js `_compassScene`
-- `gizmoOverlay` div = click/drag target only (no visual content in div itself)
-- Visible: Three.js 3D mode ONLY (`currentMode === '3d'`)
-- `updateGizmoOverlay()` must be called from `switchMode()` in `viewport.js`
-- `renderCompassGizmo()` must be called every frame in 3D mode
-
-**Rule**: Never modify either NP module. Only control visibility via showCesiumView/showThreeJSView.
+**Z-index rule**: Cesium widget creates its own internal stacking context that
+can override z-index values. Solution: hide `.mode-toggle-container` when
+Cesium is active — do NOT fight it with z-index.
 
 ---
 
-## Coordinate Systems — LOCKED
+## North Point — DO NOT MODIFY THESE MODULES
 
-### Real World (real-world.js)
-- All geographic data in WGS84 or UTM with explicit zone
-- Single anchor: `setRealWorldAnchor(zone, easting, northing)`
-- Conversions: `wgs84ToScene`, `sceneToWGS84`, `wgs84ToUTM`, `utmToWGS84`
-- Never imports from design-world modules
+Two separate compass systems. Both live in Three.js viewport only.
 
-### Three.js Scene Space
-- **North = NEGATIVE Z** (always, forever)
-- `wgs84ToScene()` → `sc.z < 0` for points north of anchor
-- `buildFlatPolygon/buildBuilding`: shape Y = `-sc.z` → after `rotateX(-PI/2)` → world.z = sc.z ✓
+### NPoint 2D — `north-point-2d.js` + `#np-container` SVG in body.html
+- SVG arrow compass, draggable/resizable
+- Shows in both 2D and 3D Three.js modes
+- Rotates to show True North vs Design North angle
+- Managed entirely by north-point-2d.js
+
+### NPoint 3D — `north-point-3d.js` + `#gizmo3d-overlay` div
+- Canvas-drawn compass, scissor-rendered into Three.js _compassScene
+- `#gizmo3d-overlay` is a transparent drag/resize target div (no visual content)
+- Visible in Three.js 3D mode ONLY (`currentMode === '3d'`)
+- `updateGizmoOverlay()` called from switchMode() in viewport.js
+- `renderCompassGizmo()` called every frame in 3D mode from app.js
+
+**Rule**: Never modify north-point-2d.js or north-point-3d.js.
+`showCesiumView()` explicitly hides both `#np-container` and `#gizmo3d-overlay`.
+`showThreeJSView()` does NOT touch either — their own modules restore visibility.
+
+---
+
+## Coordinate System — LOCKED, NEVER CHANGES
+
+### Scene space axes
+- **East  = +X**
+- **Up    = +Y**
+- **North = -Z** (ALWAYS negative Z. Forever.)
+
+### WGS84 ↔ Scene conversion (real-world.js only)
+- `wgs84ToScene(lat, lng)` → `{x, z}` where z < 0 for north of anchor
+- `buildFlatPolygon / buildBuilding`: shape uses Y = -sc.z so after
+  `rotateX(-PI/2)` the result lands at sc.z (north = -Z) ✓
 - `buildLine`: `new THREE.Vector3(sc.x, 0, sc.z)` ✓
 
-### Design World (design-grid.js, north-point-2d.js)
-- Overlay only: designNorthAngle, grid spacing
-- Never stores geographic coordinates
-- Never imports real-world.js
+### Real World vs Design World
+| | Real World | Design World |
+|---|---|---|
+| Module | real-world.js | design-grid.js, north-point-2d.js |
+| Data | WGS84, UTM | designNorthAngle, grid spacing |
+| Coords | Geographic | None — overlay only |
+| Cross-import | Never import Design | Never import real-world.js |
+
+---
+
+## Data Formats
+
+### What each format carries and when GPRTool uses it
+
+| Format | Contains | GPRTool role |
+|---|---|---|
+| **GeoJSON** | 2D/3D geometry + properties, WGS84 | Primary internal format. OSM saves as `context.geojson` in .gpr. Site extraction clips this to `site_context.geojson`. |
+| **DXF** | 2D/3D geometry, named layers, no semantics | In: CADMapper site context (cadmapper-import.js). Out: site.dxf generated at Extract Segment — identical to CADMapper download. TODO. |
+| **IFC** | 3D geometry + BIM semantics (wall/roof/floor/door) | In only: architect's proposed building model. loadIFC() stub in model.js. Used for GPR surface detection (roof, wall, ground by type not just normal). |
+| **OBJ / GLTF** | Pure 3D mesh, no semantics | In only: generic model import. Working via model.js. Surface type guessed from face normals. |
+| **DWG** | AutoCAD native binary | Not supported (binary format, no browser parser). |
+| **3DM (Rhino)** | 3D geometry, layers | Not supported yet. Priority for landscape architects. |
+
+### OSM data is NOT a 3D model
+OSM gives 2D footprints + height number. GPRTool constructs 3D geometry
+by extruding footprints. OSM translates cleanly to DXF and partially to IFC.
+
+### IFC is an INPUT, not an output
+IFC comes FROM the architect (Revit/ArchiCAD model of the proposed building).
+GPRTool reads it to identify surfaces for GPR calculation.
+Site extraction does NOT generate IFC.
+
+---
+
+## The .gpr File Format (ZIP renamed to .gpr)
+
+### Currently saved
+```
+manifest.json        identity, version, which sections exist
+reference.json       UTM anchor — where the project is in the world (IMMUTABLE)
+design.json          designNorthAngle, grid spacing
+context.geojson      OSM or CADMapper geometry as WGS84 GeoJSON
+boundary.geojson     lot boundary polygon (added after Draw Lot Boundary)
+```
+
+### To be added at Extract Segment (TODO)
+```
+site_context.geojson context.geojson clipped to rectangle
+site.dxf             layered DXF of site segment — equivalent to CADMapper output
+```
+
+### Future (Building stage)
+```
+model/buildings.json proposed building volumes
+model/landscape.json planting areas, substrates
+model/plants.json    individual plant placements, species, LAI
+results/gpr_score.json GPR calculation output
+results/gpr_report.html self-contained HTML report
+```
 
 ---
 
 ## Module Responsibilities
 
-| Module | Owns | Notes |
+| Module | Owns | Status |
 |---|---|---|
-| `real-world.js` | UTM↔WGS84, scene↔UTM | Single source of truth for coords |
-| `cesium-viewer.js` | Cesium globe, flyTo, pickPosition | New module, Apr 2026 |
-| `gpr-file.js` | .gpr ZIP read/write, IndexedDB | JSZip dependency |
-| `osm-import.js` | Overpass fetch, Three.js OSM geometry, terrain worker | Calls `buildLayerGroups` |
-| `cadmapper-import.js` | DXF parse, Three.js CADMapper geometry | Shares `buildLayerPanel` |
-| `terrain-worker.js` | Web Worker: AWS Terrarium tiles + contours | Off main thread |
-| `projects.js` | Supabase save/load/list | Non-blocking: dialog shows immediately |
+| `app.js` | Orchestrator, render loop, event wiring | ~1650 lines — extract further |
+| `real-world.js` | All coordinate conversions | Stable |
+| `cesium-viewer.js` | Cesium globe, flyTo, viewport switching | Apr 2026 |
+| `gpr-file.js` | .gpr ZIP read/write, IndexedDB | Stable |
+| `osm-import.js` | Overpass fetch, Three.js OSM geometry, terrain worker | Active |
+| `cadmapper-import.js` | DXF parse, Three.js geometry | Stable |
+| `terrain-worker.js` | Web Worker: AWS Terrarium + contours | Apr 2026 |
+| `projects.js` | Supabase save/load/list/dialog | Active |
 | `north-point-2d.js` | SVG NPoint, drag, rotate | DO NOT TOUCH |
 | `north-point-3d.js` | Gizmo compass, scissor render | DO NOT TOUCH |
 | `viewport.js` | switchMode, cameras, fit functions | Calls updateGizmoOverlay |
-| `site.js` | Lot boundary draw, renderLotBoundary | Uses real-world.js |
-| `design-grid.js` | Design grid overlay | Design world only |
-| `grid.js` | CAD grid helpers | updateSceneHelpers |
-| `plants.js` | Plant placement, GPR calc | Large module |
-| `surfaces.js` | Surface detection/selection | |
-| `ui.js` | Clock, feedback, setPipelineStatus, setStage | |
+| `site.js` | Lot boundary draw, renderLotBoundary | Stable |
+| `design-grid.js` | Design grid overlay | Stable |
+| `grid.js` | CAD grid, updateSceneHelpers | Stable |
+| `plants.js` | Plant placement, GPR calculation | Large |
+| `surfaces.js` | Surface detection/selection | Stable |
+| `ui.js` | Clock, feedback, setPipelineStatus, setStage | Active |
 | `state.js` | Shared mutable state object | No logic |
-| `app.js` | Everything else | Orchestrator only — extract further over time |
 
 ---
 
-## Render Loop (app.js)
+## Render Loop (app.js, every frame)
 
 ```
 requestAnimationFrame(animate)
-  → state.controls.update()
-  → if 3D: renderCompassGizmo()   ← north-point-3d.js
-  → if 3D: updateGizmoOverlay()   ← north-point-3d.js
-  → renderer.render(scene, camera)
+  controls.update()
+  if 3D mode: renderCompassGizmo()    ← north-point-3d.js
+  if 3D mode: updateGizmoOverlay()    ← north-point-3d.js
+  renderer.render(scene, camera)      ← Three.js
 ```
 
-Cesium has its own render loop inside `cesium-viewer.js` (Cesium.Viewer handles it).
-The Two renderers are never both active — one is `display:none`.
-
----
-
-## Pipeline (user workflow)
-
-```
-1. App opens → Cesium globe (rotating)
-2. User clicks "① Locate Site…" → OSM modal
-3. User searches address / clicks Cesium → lat/lng set
-4. User clicks Import → Overpass fetch → Three.js geometry built
-5. showThreeJSView() → Cesium hidden, Three.js visible
-6. .gpr created in background → Save dialog appears
-7. User clicks "② Extract Segment…" → 2D mode → rectangle picker (TODO)
-```
-
----
-
-## Known Issues / TODO
-
-- [ ] Rectangle picker for Extract Site Segment (stage 2) not yet implemented
-- [ ] Double NPoint in 3D mode: np-container (2D) + gizmoOverlay (3D) both visible in 3D. Fix: switchMode should hide #np-container when mode='3d'. Already handled correctly by north-point-2d.js if initNorthPoint2D is called — don't touch.
-- [ ] Save dialog still slow when .gpr creation is large
-- [ ] Overpass browser cache implemented but server-side cache in api/overpass.js is still no-op (Vercel serverless)
-- [ ] Terrain/contours via Web Worker: implemented but not wired to show in layer panel on first load
+Cesium has its own internal render loop (Cesium.Viewer). Never runs
+simultaneously with Three.js — one container is always display:none.
 
 ---
 
 ## Rules for New Code
 
-1. **New features = new files.** Add to existing files only for wiring (event listeners, imports).
+1. **New features = new files.** Wire in app.js with import + one event listener.
 2. **Never modify north-point-2d.js or north-point-3d.js.**
 3. **Never add coordinate math outside real-world.js.**
-4. **Cesium and Three.js are mutually exclusive.** showCesiumView/showThreeJSView are the only correct switches.
-5. **Test syntax before deploy.** Blank screen = JS syntax error. Check DevTools console first.
-6. **North = -Z in Three.js.** Always. Forever.
+4. **Viewport switching = showCesiumView() / showThreeJSView() only.**
+5. **Check DevTools console FIRST for blank screen** — always a JS syntax error.
+6. **North = -Z in Three.js. Always. Forever.**
+7. **Before deploying: verify no orphaned code outside functions.**

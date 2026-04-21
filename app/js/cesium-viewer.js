@@ -253,7 +253,11 @@ export function getCameraPosition() {
 export function resetCesiumView() {
   stopLocationPick();
   cesiumClearLotBoundary_internal();
-  if (_viewer) flyToSite(-31.9505, 115.8605, 800);
+  _autoRotating = true; // restart globe rotation
+  if (_viewer) {
+    // Zoom out to globe view
+    _viewer.camera.flyHome(1.5);
+  }
 }
 
 function cesiumClearLotBoundary_internal() {
