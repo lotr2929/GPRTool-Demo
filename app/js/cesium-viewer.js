@@ -154,31 +154,35 @@ export const isCesiumReady   = () => _ready;
 // ── Exclusive render state switching ──────────────────────────────────────
 // Cesium and Three.js are two separate rendering states — never both visible.
 
-/** Activate Cesium — hide Three.js canvas and design overlays. */
+/** Activate Cesium — hide all Three.js overlays. */
 export function showCesiumView() {
   const cesiumEl = document.getElementById('cesium-container');
   const canvas   = document.getElementById('three-canvas');
   const np       = document.getElementById('np-container');
   const toggle   = document.querySelector('.mode-toggle-container');
+  // Also hide the 3D gizmo overlay (injected by north-point-3d.js)
+  const gizmo    = document.getElementById('gizmo3d-overlay');
   if (cesiumEl) cesiumEl.style.display = 'block';
   if (canvas)   canvas.style.display   = 'none';
   if (np)       np.style.display       = 'none';
   if (toggle)   toggle.style.display   = 'none';
+  if (gizmo)    gizmo.style.display    = 'none';
 }
 
-/** Activate Three.js — hide Cesium, show design overlays. */
+/** Activate Three.js — hide Cesium only. NPoint modules manage their own visibility. */
 export function showThreeJSView() {
   const cesiumEl = document.getElementById('cesium-container');
   const canvas   = document.getElementById('three-canvas');
-  const np       = document.getElementById('np-container');
   const toggle   = document.querySelector('.mode-toggle-container');
   if (cesiumEl) cesiumEl.style.display = 'none';
   if (canvas) {
     canvas.style.display = 'block';
     window.dispatchEvent(new Event('resize'));
   }
-  if (np)     np.style.display     = 'block';
   if (toggle) toggle.style.display = 'flex';
+  // NPoint 2D (#np-container) and NPoint 3D (gizmoOverlay) are managed
+  // by north-point-2d.js and north-point-3d.js respectively via switchMode().
+  // Do NOT touch them here.
 }
 
 // ── Camera view presets ───────────────────────────────────────────────────
