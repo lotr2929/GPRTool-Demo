@@ -47,60 +47,100 @@ let _callbacks = null;
 let THREE      = null;  // set from callbacks at init, used by all geometry builders
 
 // ── Modal HTML ────────────────────────────────────────────────────────────
-// Non-blocking top bar — Cesium 3D scene remains fully visible and clickable
-// underneath. User clicks the 3D scene to pick their site location.
+// Two-phase top-bar overlay. Cesium 3D scene remains fully visible and
+// clickable underneath. Single #osm-overlay host, two child blocks:
+//   #osm-phase-a — Locate Site: address + Search + lat/lng inputs.
+//   #osm-phase-b — Import OSM Context: radius + Import + Back, with
+//                   read-only coords in the header bar.
+// Promotion A→B fires when Search succeeds OR user clicks the globe.
+// Per project colour rule: header bar uses --chrome-dark, body is light
+// (--chrome-panel + --chrome-input + --text-primary).
 const MODAL_HTML = `
 <div id="osm-overlay" style="
   display:none; position:fixed; top:52px; left:0; right:0; z-index:1100;
   pointer-events:none;">
 
-  <div style="
+  <!-- ── Phase A: Locate Site ─────────────────────────────────────────── -->
+  <div id="osm-phase-a" style="
     pointer-events:all;
     margin:0 auto; max-width:720px;
-    background:var(--chrome-dark,#1e3d1e);
-    border:1px solid rgba(255,255,255,0.15);
+    background:var(--chrome-panel,#f0f0f0);
+    border:1px solid var(--chrome-border,rgba(0,0,0,0.2));
     border-top:none; border-radius:0 0 8px 8px;
-    padding:10px 16px 12px;
-    box-shadow:0 6px 24px rgba(0,0,0,0.5);">
+    box-shadow:0 6px 24px rgba(0,0,0,0.5);
+    overflow:hidden;">
 
-    <!-- Row 1: title + close -->
-    <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;">
+    <!-- Header bar (dark) -->
+    <div style="display:flex;align-items:center;gap:10px;padding:10px 16px;
+                background:var(--chrome-dark,#1e3d1e);color:#fff;">
       <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="#90c890" stroke-width="1.4">
         <circle cx="8" cy="8" r="6"/><path d="M2 8h12M8 2c-2 2-3 4-3 6s1 4 3 6M8 2c2 2 3 4 3 6s-1 4-3 6"/>
       </svg>
-      <span style="font-size:12px;font-weight:600;color:#fff;">Import from OpenStreetMap</span>
-      <span id="osm-pick-hint" style="font-size:11px;color:#90c890;flex:1;">
-        &#8595; Click anywhere on the 3D map to set site location
+      <span style="font-size:12px;font-weight:600;">Locate Site</span>
+      <span id="osm-pick-hint-a" style="font-size:11px;color:#90c890;flex:1;">
+        &#8595; Or click anywhere on the 3D map
       </span>
-      <button id="osm-close" style="background:none;border:none;color:rgba(255,255,255,0.5);
+      <button id="osm-close-a" type="button" style="background:none;border:none;color:rgba(255,255,255,0.7);
         cursor:pointer;font-size:18px;line-height:1;padding:0 4px;">&#x2715;</button>
     </div>
 
-    <!-- Row 2: address search + coords + radius + import -->
-    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+    <!-- Body (light) -->
+    <div style="padding:12px 16px;display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
       <input id="osm-address" type="text" placeholder="Search address\u2026"
-        style="flex:2;min-width:160px;background:rgba(255,255,255,0.1);
-        border:1px solid rgba(255,255,255,0.25);border-radius:4px;
-        color:#fff;font-size:12px;padding:5px 10px;outline:none;"
+        style="flex:2;min-width:160px;background:var(--chrome-input,#fff);
+        border:1px solid var(--chrome-border,#ccc);border-radius:4px;
+        color:var(--text-primary,#222);font-size:12px;padding:5px 10px;outline:none;"
         onkeydown="if(event.key==='Enter') document.getElementById('osm-search-btn').click()">
-      <button id="osm-search-btn" style="background:rgba(255,255,255,0.15);color:#fff;border:none;
+      <button id="osm-search-btn" type="button" style="background:var(--accent-mid,#4a8a4a);color:#fff;border:none;
         border-radius:4px;font-size:11px;padding:5px 12px;cursor:pointer;white-space:nowrap;">
         Search
       </button>
 
       <div style="display:flex;align-items:center;gap:5px;">
-        <span style="font-size:10px;color:rgba(255,255,255,0.5);">Lat</span>
+        <span style="font-size:10px;color:var(--text-secondary,#666);">Lat</span>
         <input id="osm-lat" type="number" step="any" placeholder="\u2014"
-          style="width:100px;background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.25);
-          border-radius:4px;color:#fff;font-size:11px;padding:4px 8px;outline:none;">
-        <span style="font-size:10px;color:rgba(255,255,255,0.5);">Lng</span>
+          style="width:100px;background:var(--chrome-input,#fff);border:1px solid var(--chrome-border,#ccc);
+          border-radius:4px;color:var(--text-primary,#222);font-size:11px;padding:4px 8px;outline:none;">
+        <span style="font-size:10px;color:var(--text-secondary,#666);">Lng</span>
         <input id="osm-lng" type="number" step="any" placeholder="\u2014"
-          style="width:110px;background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.25);
-          border-radius:4px;color:#fff;font-size:11px;padding:4px 8px;outline:none;">
+          style="width:110px;background:var(--chrome-input,#fff);border:1px solid var(--chrome-border,#ccc);
+          border-radius:4px;color:var(--text-primary,#222);font-size:11px;padding:4px 8px;outline:none;">
       </div>
 
+      <span id="osm-status-a" style="font-size:11px;color:var(--accent-mid,#4a8a4a);min-width:120px;"></span>
+    </div>
+  </div>
+
+  <!-- ── Phase B: Import OSM Context ──────────────────────────────────── -->
+  <div id="osm-phase-b" style="
+    display:none;
+    pointer-events:all;
+    margin:0 auto; max-width:720px;
+    background:var(--chrome-panel,#f0f0f0);
+    border:1px solid var(--chrome-border,rgba(0,0,0,0.2));
+    border-top:none; border-radius:0 0 8px 8px;
+    box-shadow:0 6px 24px rgba(0,0,0,0.5);
+    overflow:hidden;">
+
+    <!-- Header bar (dark) -->
+    <div style="display:flex;align-items:center;gap:10px;padding:10px 16px;
+                background:var(--chrome-dark,#1e3d1e);color:#fff;">
+      <button id="osm-back-btn" type="button" style="background:rgba(255,255,255,0.12);
+        border:1px solid rgba(255,255,255,0.3);color:#fff;cursor:pointer;
+        font-size:11px;padding:3px 10px;border-radius:3px;">
+        &larr; Back
+      </button>
+      <span style="font-size:12px;font-weight:600;">Import OSM Context</span>
+      <span id="osm-coords-display" style="font-size:11px;color:#90c890;flex:1;font-family:monospace;"></span>
+      <button id="osm-close-b" type="button" style="background:none;border:none;color:rgba(255,255,255,0.7);
+        cursor:pointer;font-size:18px;line-height:1;padding:0 4px;">&#x2715;</button>
+    </div>
+
+    <!-- Body (light) -->
+    <div style="padding:12px 16px;display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+      <span style="font-size:11px;color:var(--text-secondary,#666);">Radius:</span>
       <select id="osm-radius" style="font-size:11px;background:var(--chrome-input,#fff);
-        border:1px solid var(--chrome-border);border-radius:4px;padding:4px 8px;
+        border:1px solid var(--chrome-border,#ccc);border-radius:4px;padding:4px 8px;
         color:var(--text-primary,#222);outline:none;">
         <option value="250">250 m</option>
         <option value="500" selected>500 m</option>
@@ -108,9 +148,13 @@ const MODAL_HTML = `
         <option value="1000">1 km</option>
       </select>
 
-      <span id="osm-status" style="font-size:11px;color:#90c890;min-width:120px;"></span>
+      <span id="osm-pick-hint-b" style="font-size:11px;color:var(--text-secondary,#666);flex:1;">
+        Click the map to reposition, then Import
+      </span>
 
-      <button id="osm-import-btn" style="
+      <span id="osm-status-b" style="font-size:11px;color:var(--accent-mid,#4a8a4a);min-width:120px;"></span>
+
+      <button id="osm-import-btn" type="button" style="
         background:var(--accent-mid,#4a8a4a);color:#fff;border:none;
         border-radius:4px;font-size:12px;padding:6px 18px;cursor:pointer;white-space:nowrap;">
         Import
@@ -126,25 +170,61 @@ export function initOSMImport(callbacks) {
   THREE = callbacks.THREE;
   document.body.insertAdjacentHTML('beforeend', MODAL_HTML);
   document.getElementById('importOSMBtn').addEventListener('click', openModal);
-  document.getElementById('osm-close').addEventListener('click', closeModal);
+  document.getElementById('osm-close-a').addEventListener('click', closeModal);
+  document.getElementById('osm-close-b').addEventListener('click', closeModal);
+  document.getElementById('osm-back-btn').addEventListener('click', _backToPhaseA);
   document.getElementById('osm-import-btn').addEventListener('click', runImport);
   document.getElementById('osm-search-btn').addEventListener('click', searchAddress);
 }
 
 function openModal() {
   document.getElementById('osm-overlay').style.display = 'block';
+  _showPhaseA();
   // Activate Cesium click-to-pick — clicking on the 3D scene sets lat/lng
+  // and promotes A → B (a confirmed location is the trigger to enter Phase B).
   startLocationPick(({ lat, lng }) => {
     document.getElementById('osm-lat').value = lat.toFixed(7);
     document.getElementById('osm-lng').value = lng.toFixed(7);
     setStatus('Location set \u2014 select radius and click Import.');
-    const hint = document.getElementById('osm-pick-hint');
+    const hint = document.getElementById('osm-pick-hint-a');
     if (hint) hint.textContent = `\u2713 ${lat.toFixed(5)}, ${lng.toFixed(5)} \u2014 click again to reposition`;
+    _showPhaseB();
   });
 }
 function closeModal() {
   document.getElementById('osm-overlay').style.display = 'none';
   stopLocationPick();
+}
+
+// ── Phase transitions ─────────────────────────────────────────────────────
+// Phase A's lat/lng inputs (#osm-lat, #osm-lng) remain the canonical source —
+// Phase B's #osm-coords-display is a read-only mirror, refreshed on every
+// transition and on every click-to-reposition.
+function _showPhaseA() {
+  document.getElementById('osm-phase-a').style.display = 'block';
+  document.getElementById('osm-phase-b').style.display = 'none';
+}
+
+function _showPhaseB() {
+  document.getElementById('osm-phase-a').style.display = 'none';
+  document.getElementById('osm-phase-b').style.display = 'block';
+  _updateCoordsDisplay();
+}
+
+function _backToPhaseA() {
+  _showPhaseA();
+}
+
+function _updateCoordsDisplay() {
+  const lat = parseFloat(document.getElementById('osm-lat').value);
+  const lng = parseFloat(document.getElementById('osm-lng').value);
+  const el  = document.getElementById('osm-coords-display');
+  if (!el) return;
+  if (!isNaN(lat) && !isNaN(lng)) {
+    el.textContent = `${lat.toFixed(6)}, ${lng.toFixed(6)}`;
+  } else {
+    el.textContent = '';
+  }
 }
 
 // ── Address search via Google Geocoding API (server-side proxy) ───────────
@@ -163,17 +243,24 @@ async function searchAddress() {
     document.getElementById('osm-lat').value = lat.toFixed(7);
     document.getElementById('osm-lng').value = lng.toFixed(7);
     const { flyToSite } = await import('./cesium-viewer.js');
-    flyToSite(lat, lng, precise ? 200 : 400);
+    // alt=800 (above ground) — flyToSite samples 3D-tile surface, no longer
+    // ellipsoid-relative. precise/area distinction kept only in status text.
+    await flyToSite(lat, lng, 800);
     setStatus(`${precise ? '\u2713 Building found' : '\u26a0 Area result'} \u2014 ${display_name.slice(0, 55)}\u2026`);
+    _showPhaseB();
   } catch (err) {
     setStatus('Search failed: ' + err.message);
   }
 }
 function setStatus(msg, isError = false) {
-  const el = document.getElementById('osm-status');
-  if (!el) return;
-  el.textContent = msg;
-  el.style.color = isError ? '#e06060' : '#90c890';
+  // Write to whichever phase status span is mounted; both ids exist after init.
+  const color = isError ? '#e06060' : 'var(--accent-mid,#4a8a4a)';
+  for (const id of ['osm-status-a', 'osm-status-b']) {
+    const el = document.getElementById(id);
+    if (!el) continue;
+    el.textContent = msg;
+    el.style.color = color;
+  }
 }
 
 // ── WGS84 bounding box from lat/lng centre + radius in metres ────────────

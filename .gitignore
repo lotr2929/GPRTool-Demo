@@ -1,6 +1,9 @@
 # Temporary debug scripts
 _debug/
 
+# Google Drive sync staging
+.tmp.driveupload/
+
 # Dependencies
 node_modules/
 .venv/

@@ -39,6 +39,12 @@ let _onBoundaryPoint   = null;
 let _onBoundaryDone    = null;
 let _pickHandler       = null;
 
+// Site / view-mode state — used to show/hide the viewport 2D/3D toggle pill.
+// _siteLocated flips true on first successful flyToSite or click-pick;
+// reset by resetCesiumView (Clear Site / New Project).
+let _siteLocated = false;
+let _viewMode    = '3D';   // '2D' | '3D'
+
 // ── Init ──────────────────────────────────────────────────────────────────
 
 export async function initCesiumViewer(containerId) {
@@ -140,12 +146,59 @@ function _injectHUD() {
   hud.id = 'cesium-hud';
   hud.style.cssText = `
     position:absolute; bottom:12px; right:16px; z-index:10;
-    display:flex; gap:6px; align-items:center;
-    pointer-events:none;
+    display:flex; gap:8px; align-items:center;
     font:11px/1.4 'Segoe UI',sans-serif; color:rgba(255,255,255,0.6);
   `;
-  hud.innerHTML = `<span id="cesium-alt"></span>`;
+  hud.innerHTML = `<span id="cesium-alt" style="pointer-events:none;"></span>`;
   document.getElementById('cesium-container')?.appendChild(hud);
+  _injectViewToggle();
+}
+
+// 2D/3D toggle pill — overlaid on the Cesium viewport, sibling of the altitude
+// readout inside #cesium-hud. Hidden until the user has located a site
+// (_siteLocated). Stays visible until Clear Site (resetCesiumView).
+// Label shows the TARGET mode: in 3D the button reads "2D" (= click to go 2D).
+function _injectViewToggle() {
+  if (document.getElementById('cesium-view-toggle')) return;
+  const btn = document.createElement('button');
+  btn.id    = 'cesium-view-toggle';
+  btn.type  = 'button';
+  btn.title = 'Toggle 2D / 3D view';
+  btn.textContent = '2D';
+  btn.style.cssText = `
+    display:none; pointer-events:auto;
+    background: var(--chrome-panel, rgba(40,40,40,0.85));
+    color: var(--text-primary, #fff);
+    border: 1px solid var(--chrome-border, rgba(255,255,255,0.25));
+    border-radius: 14px;
+    font: 600 11px/1 'Segoe UI', sans-serif;
+    padding: 5px 12px;
+    cursor: pointer;
+  `;
+  btn.addEventListener('click', () => {
+    if (_viewMode === '3D') {
+      setCesium2D();
+      _viewMode      = '2D';
+      btn.textContent = '3D';
+    } else {
+      setCesium3D();
+      _viewMode      = '3D';
+      btn.textContent = '2D';
+    }
+  });
+  document.getElementById('cesium-hud')?.appendChild(btn);
+}
+
+function _showViewToggle() {
+  const btn = document.getElementById('cesium-view-toggle');
+  if (btn) btn.style.display = 'inline-block';
+}
+
+function _hideViewToggle() {
+  const btn = document.getElementById('cesium-view-toggle');
+  if (btn) btn.style.display = 'none';
+  _viewMode = '3D';
+  if (btn) btn.textContent = '2D';
 }
 
 export const getCesiumViewer = () => _viewer;
@@ -194,6 +247,18 @@ export function setCesium2D() {
   _viewer.camera.flyTo({
     destination: Cesium.Cartesian3.fromRadians(pos.longitude, pos.latitude, 800),
     orientation: { heading: 0, pitch: Cesium.Math.toRadians(-90), roll: 0 },
+    duration: 1.2,
+  });
+}
+
+/** Switch to 3D perspective view at current lat/lng. Mirror of setCesium2D
+ *  but with pitch=-35° instead of -90°. Used by the viewport 2D/3D toggle. */
+export function setCesium3D() {
+  if (!_viewer) return;
+  const pos = _viewer.camera.positionCartographic;
+  _viewer.camera.flyTo({
+    destination: Cesium.Cartesian3.fromRadians(pos.longitude, pos.latitude, 800),
+    orientation: { heading: 0, pitch: Cesium.Math.toRadians(-35), roll: 0 },
     duration: 1.2,
   });
 }
@@ -254,6 +319,8 @@ export function resetCesiumView() {
   stopLocationPick();
   cesiumClearLotBoundary_internal();
   _autoRotating = true; // restart globe rotation
+  _siteLocated  = false;
+  _hideViewToggle();
   if (_viewer) {
     // Zoom out to globe view
     _viewer.camera.flyHome(1.5);
@@ -271,14 +338,41 @@ function cesiumClearLotBoundary_internal() {
 
 /**
  * Fly to a WGS84 site location.
+ *
+ * BUG FIX (Session #29): Cesium.Cartesian3.fromDegrees(_, _, alt) is
+ * ELLIPSOID-relative. In dense urban areas (Sydney CBD towers > 200m above
+ * ellipsoid) flying to alt=200-400m places the camera INSIDE photogrammetric
+ * building meshes — user sees abstract texture, "wrong location". Fix: sample
+ * the topmost surface at the destination via scene.sampleHeightMostDetailed
+ * (which considers the loaded Google 3D tileset, not just the ellipsoid
+ * terrain provider) and place the camera at groundHeight + safeAlt above it.
+ *
+ * Also marks site located + reveals the viewport 2D/3D toggle pill, and
+ * stops the globe auto-rotate.
+ *
  * @param {number} lat
  * @param {number} lng
- * @param {number} [alt=300]  Camera altitude in metres above ground
+ * @param {number} [alt=800]  Camera altitude in metres ABOVE GROUND
  */
-export function flyToSite(lat, lng, alt = 300) {
+export async function flyToSite(lat, lng, alt = 800) {
   if (!_viewer) return;
+  _autoRotating = false;
+  _siteLocated  = true;
+  _showViewToggle();
+
+  const carto = Cesium.Cartographic.fromDegrees(lng, lat);
+  let groundHeight = 0;
+  try {
+    const sampled = await _viewer.scene.sampleHeightMostDetailed([carto]);
+    if (sampled && sampled[0] && Number.isFinite(sampled[0].height)) {
+      groundHeight = sampled[0].height;
+    }
+  } catch (err) {
+    console.warn('[CesiumViewer] sampleHeightMostDetailed failed; using ellipsoid', err);
+  }
+
   _viewer.camera.flyTo({
-    destination: Cesium.Cartesian3.fromDegrees(lng, lat, alt),
+    destination: Cesium.Cartesian3.fromDegrees(lng, lat, groundHeight + alt),
     orientation: {
       heading: Cesium.Math.toRadians(0),
       pitch:   Cesium.Math.toRadians(-35),
@@ -481,6 +575,9 @@ export function startLocationPick(callback) {
         heightReference: Cesium.HeightReference.CLAMP_TO_GROUND,
       },
     });
+    _autoRotating = false;
+    _siteLocated  = true;
+    _showViewToggle();
     callback({ lat, lng });
   }, Cesium.ScreenSpaceEventType.LEFT_CLICK);
 }
