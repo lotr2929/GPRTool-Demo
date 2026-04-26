@@ -662,6 +662,8 @@ body {
 .pipeline-stage[data-stage="locked"]   .stage-label { color: var(--text-secondary, #888); }
 .pipeline-stage[data-stage="locked"]   .stage-btn { opacity: 0.4; pointer-events: none; }
 .pipeline-stage[data-stage="active"]   .stage-btn { border-color: var(--accent-mid,#4a8a4a); }
+
+/* ============================================================
    2D / 3D TOGGLE
    ============================================================ */
 .mode-toggle-container {
