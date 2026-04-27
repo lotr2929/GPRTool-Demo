@@ -209,7 +209,7 @@ export async function getTerrainFromGPR() {
  * Sets the active project.
  *
  * @param {File} file
- * @returns {Promise<{ manifest, reference, design, boundary|null, hasDXF }>}
+ * @returns {Promise<{ manifest, reference, design, boundary|null, terrain|null, osmContext|null, hasDXF, zip }>}
  */
 export async function openGPR(file) {
   if (!window.JSZip) throw new Error('JSZip not loaded');
@@ -230,6 +230,11 @@ export async function openGPR(file) {
     ? JSON.parse(await terrainFile.async('string'))
     : null;
 
+  const osmContextFile = zip.file('context.geojson');
+  const osmContext = osmContextFile
+    ? JSON.parse(await osmContextFile.async('string'))
+    : null;
+
   const hasDXF = !!zip.file('context/cadmapper.dxf');
 
   // Store as active project
@@ -239,7 +244,7 @@ export async function openGPR(file) {
   _activeProjectId = id;
   _activeZip       = zip;
 
-  return { manifest, reference, design, boundary, terrain, hasDXF, zip };
+  return { manifest, reference, design, boundary, terrain, osmContext, hasDXF, zip };
 }
 
 // ── Get DXF bytes from active project (for re-import) ────────────────────

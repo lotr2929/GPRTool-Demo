@@ -964,7 +964,7 @@
 
     // ── Named function so both the modal callback and any future callers can use it ──
     async function openGPRFile(file) {
-      const { manifest, reference, design, boundary, terrain, hasDXF, zip } = await openGPR(file);
+      const { manifest, reference, design, boundary, terrain, osmContext, hasDXF, zip } = await openGPR(file);
 
       // ── REAL WORLD: restore anchor and scene offset from reference.json ──
       setRealWorldAnchor(reference.utm_zone, reference.utm_easting, reference.utm_northing);
@@ -1013,6 +1013,38 @@
           buildLayerPanel(layerGroups);
         }
       }
+
+      // ── OSM context restore (no DXF — rebuild scene from saved context.geojson) ──
+      if (!hasDXF && osmContext) {
+        const { buildLayerGroupsFromGeoJSON } = await import('./osm-import.js');
+        const layerGroups = buildLayerGroupsFromGeoJSON(osmContext, THREE);
+        if (layerGroups && Object.keys(layerGroups).length) {
+          if (state.cadmapperGroup) {
+            scene.remove(state.cadmapperGroup);
+            state.cadmapperGroup.traverse(c => { c.geometry?.dispose(); c.material?.dispose(); });
+            state.cadmapperGroup = null;
+          }
+          state.cadmapperGroup = new THREE.Group();
+          state.cadmapperGroup.name = 'cadmapper-context';
+          Object.values(layerGroups).forEach(g => state.cadmapperGroup.add(g));
+          // OSM geometry is already in scene space via wgs84ToScene — no offset shift, no floor drop.
+          scene.add(state.cadmapperGroup);
+          const size = new THREE.Vector3();
+          new THREE.Box3().setFromObject(state.cadmapperGroup).getSize(size);
+          updateSceneHelpers(Math.max(size.x, size.z));
+          state.designGridManager.initHorizontal(
+            design?.grid_spacing_m ?? 100, design?.minor_divisions ?? 0,
+            5000, new THREE.Vector3(0, 0, 0)
+          );
+          fit3DCamera(new THREE.Box3().setFromObject(state.cadmapperGroup));
+          switchMode('3d');
+          document.getElementById('empty-props').style.display  = 'none';
+          document.getElementById('clearSiteBtn').style.display = 'block';
+          document.getElementById('left-panel').classList.add('site-imported');
+          buildLayerPanel(layerGroups);
+        }
+      }
+
       if (boundary) renderLotBoundary(boundary);
 
       // ── Restore terrain from saved payload (if present) ─────────────

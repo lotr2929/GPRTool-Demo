@@ -654,6 +654,91 @@ function buildLayerGroups(osmData, THREE) {
 }
 
 
+// ── Build Three.js layer groups from saved GeoJSON FeatureCollection ─────
+// Mirror of buildLayerGroups() but reads from saved context.geojson rather
+// than fresh Overpass JSON. Used by app.js::openGPRFile when reloading an
+// OSM-only .gpr. Each feature carries its OSM tags plus _gprLayer (the
+// pre-computed LAYER_CONFIG key from the original import).
+//
+// Geometry: Polygon = closed (buildings, parks, water); LineString = open
+// (roads, paths, contours, railways). All coords are [lng, lat] WGS84.
+export function buildLayerGroupsFromGeoJSON(featureCollection, THREE) {
+  if (!featureCollection?.features?.length) return {};
+
+  const groups = {};
+  const getGroup = (key) => {
+    if (!groups[key]) {
+      const cfg = LAYER_CONFIG[key] || { color: 0xaaaaaa, opacity: 1.0, yOffset: 0 };
+      groups[key] = new THREE.Group();
+      groups[key].name = key;
+      if (cfg.yOffset) groups[key].position.y = cfg.yOffset;
+    }
+    return groups[key];
+  };
+
+  for (const feat of featureCollection.features) {
+    if (!feat?.geometry?.coordinates?.length) continue;
+    const tags  = feat.properties || {};
+    const layer = tags._gprLayer || classifyWay(tags);
+    if (!layer) continue;
+
+    // Extract ring as [{lat,lng},...] from either Polygon or LineString
+    const rawCoords = feat.geometry.type === 'Polygon'
+      ? feat.geometry.coordinates[0]   // outer ring
+      : feat.geometry.coordinates;     // LineString
+    if (!rawCoords || rawCoords.length < 2) continue;
+    const ring = rawCoords.map(([lng, lat]) => ({ lat, lng }));
+
+    const cfg = LAYER_CONFIG[layer] || {};
+    const grp = getGroup(layer);
+
+    if (layer === 'buildings') {
+      const rawH = parseFloat(tags.height) || (parseFloat(tags['building:levels']) * 3.5) || 6;
+      const geom = buildBuilding(ring, rawH, THREE);
+      if (geom) {
+        const mat = new THREE.MeshBasicMaterial({
+          color: cfg.color, opacity: cfg.opacity,
+          transparent: cfg.opacity < 1, side: THREE.DoubleSide,
+        });
+        grp.add(new THREE.Mesh(geom, mat));
+        const edges = new THREE.EdgesGeometry(geom, 15);
+        grp.add(new THREE.LineSegments(edges,
+          new THREE.LineBasicMaterial({ color: 0x888888, opacity: 0.4, transparent: true })));
+      }
+    } else if (['highways','major_roads','minor_roads','paths'].includes(layer)) {
+      const hw = tags.highway || 'residential';
+      const w  = (ROAD_WIDTHS[hw] || 8) / 2;
+      const geom = buildRoadPolygon(ring, w, THREE);
+      if (geom) grp.add(new THREE.Mesh(geom,
+        new THREE.MeshBasicMaterial({ color: cfg.color, opacity: cfg.opacity,
+          transparent: cfg.opacity < 1, side: THREE.DoubleSide,
+          depthWrite: false })));
+    } else if (['parks','water'].includes(layer)) {
+      if (feat.geometry.type === 'Polygon') {
+        const pts = ring.map(ll => {
+          const sc = wgs84ToScene(ll.lat, ll.lng);
+          return sc ? { x: sc.x, z: sc.z } : null;
+        }).filter(Boolean);
+        const geom = buildFlatPolygon(pts, THREE);
+        if (geom) grp.add(new THREE.Mesh(geom,
+          new THREE.MeshBasicMaterial({ color: cfg.color, opacity: cfg.opacity,
+            transparent: cfg.opacity < 1, side: THREE.DoubleSide, depthWrite: false })));
+      } else {
+        const geom = buildLine(ring, THREE);
+        if (geom) grp.add(new THREE.Line(geom,
+          new THREE.LineBasicMaterial({ color: cfg.color })));
+      }
+    } else {
+      // railways, contours — lines
+      const geom = buildLine(ring, THREE);
+      if (geom) grp.add(new THREE.Line(geom,
+        new THREE.LineBasicMaterial({ color: cfg.color, opacity: cfg.opacity, transparent: true })));
+    }
+  }
+  return groups;
+}
+
+
 // ── Convert Overpass JSON → WGS84 GeoJSON FeatureCollection ──────────────
 // Stored as context.geojson in the .gpr. Coordinates are [lng, lat] per GeoJSON spec.
 // All tags preserved as properties. _gprLayer matches LAYER_CONFIG keys.
