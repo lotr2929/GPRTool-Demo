@@ -31,7 +31,9 @@ for /f "usebackq tokens=1,* delims==" %%A in ("deploy.env") do (
 )
 if not defined PROJECT_NAME set PROJECT_NAME=project
 
-echo === %PROJECT_NAME% Deploy ===
+echo =============================
+echo     %PROJECT_NAME% Deploy 
+echo =============================
 
 REM -- Bump service-worker version (only if SW_PREFIX set and file exists)
 if defined SW_PREFIX if exist service-worker.js (

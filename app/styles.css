@@ -697,21 +697,21 @@ body {
 }
 
 .mode-btn:hover { background: var(--chrome-panel-alt); }
-.mode-btn.active { background: var(--chrome-dark); }
+.mode-btn.active { background: var(--accent); }
 
 .mode-btn[data-mode="2d"]::before {
   content: "";
   display: block;
   width: 22px;
   height: 22px;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect x='1.5' y='1.5' width='13' height='13' fill='none' stroke='%23555' stroke-width='1.5'/%3E%3C/svg%3E");
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect x='0.75' y='0.75' width='14.5' height='14.5' fill='none' stroke='%23555' stroke-width='1.5'/%3E%3C/svg%3E");
   background-size: contain;
   background-repeat: no-repeat;
   background-position: center;
 }
 
 .mode-btn[data-mode="2d"].active::before {
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect x='1.5' y='1.5' width='13' height='13' fill='none' stroke='%23fff' stroke-width='1.5'/%3E%3C/svg%3E");
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect x='0.75' y='0.75' width='14.5' height='14.5' fill='none' stroke='%23fff' stroke-width='1.5'/%3E%3C/svg%3E");
 }
 
 .mode-btn[data-mode="3d"]::before {
