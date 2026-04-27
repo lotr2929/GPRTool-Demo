@@ -47,6 +47,9 @@ export const state = {
   siteBoundaryLine:null,   // Site boundary line
   siteSurface:     null,   // Site surface mesh
   sitePinGroup:    null,
+  // ── Terrain (AWS Terrarium / DXF topography) ──────────────────────────────
+  terrainStatus:   null,   // null | 'idle' | 'fetching' | 'ready' | 'error' | 'unavailable'
+  terrainPayload:  null,   // last successful terrain payload (for save/reload)
   sitePinDom:      null,
   sitePinWorldPos: null,
   siteOriginLon:   0,

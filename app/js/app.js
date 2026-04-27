@@ -964,7 +964,7 @@
 
     // ── Named function so both the modal callback and any future callers can use it ──
     async function openGPRFile(file) {
-      const { manifest, reference, design, boundary, hasDXF, zip } = await openGPR(file);
+      const { manifest, reference, design, boundary, terrain, hasDXF, zip } = await openGPR(file);
 
       // ── REAL WORLD: restore anchor and scene offset from reference.json ──
       setRealWorldAnchor(reference.utm_zone, reference.utm_easting, reference.utm_northing);
@@ -1014,6 +1014,13 @@
         }
       }
       if (boundary) renderLotBoundary(boundary);
+
+      // ── Restore terrain from saved payload (if present) ─────────────
+      if (terrain && state.cadmapperGroup) {
+        const { rebuildTerrainFromPayload } = await import('./osm-import.js');
+        rebuildTerrainFromPayload(terrain);
+      }
+
       const wgs84Bounds = hasRealWorldAnchor() ? {
         sw: sceneToWGS84(-reference.site_span_m / 2, -reference.site_span_m / 2),
         ne: sceneToWGS84( reference.site_span_m / 2,  reference.site_span_m / 2),

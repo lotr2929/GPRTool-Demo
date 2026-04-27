@@ -161,6 +161,47 @@ export async function addBoundaryToGPR(geojson) {
   console.log(`[GPR] Boundary added to ${_activeProjectId}`);
 }
 
+// ── Add or replace terrain.json in the active project ─────────────────────
+
+/**
+ * Add or update the terrain payload in the active project.
+ * @param {Object} payload - { source, zoom, intervalM, anchorX, anchorY, points, contourSegments }
+ */
+export async function addTerrainToGPR(payload) {
+  if (!_activeZip || !_activeProjectId) throw new Error('No active project');
+
+  _activeZip.file('terrain.json', JSON.stringify(payload));
+
+  const manifestStr = await _activeZip.file('manifest.json').async('string');
+  const manifest = JSON.parse(manifestStr);
+  if (!manifest.sections.includes('terrain')) manifest.sections.push('terrain');
+  manifest.modified = new Date().toISOString();
+  _activeZip.file('manifest.json', JSON.stringify(manifest, null, 2));
+
+  const blob = await _activeZip.generateAsync({ type: 'blob', compression: 'DEFLATE',
+    compressionOptions: { level: 6 } });
+  await idbPut(_activeProjectId, blob);
+
+  const ptCount  = payload.points?.length ?? 0;
+  const segCount = (payload.contourSegments?.length ?? 0) / 6;
+  console.log(`[GPR] Terrain added to ${_activeProjectId} (${ptCount} pts, ${segCount} contour segs)`);
+}
+
+/**
+ * Read terrain.json from the active project, returns parsed payload or null.
+ */
+export async function getTerrainFromGPR() {
+  if (!_activeZip) return null;
+  const entry = _activeZip.file('terrain.json');
+  if (!entry) return null;
+  try {
+    return JSON.parse(await entry.async('string'));
+  } catch (e) {
+    console.warn('[GPR] terrain.json parse failed:', e);
+    return null;
+  }
+}
+
 // ── Open a .gpr file ──────────────────────────────────────────────────────
 
 /**
@@ -184,6 +225,11 @@ export async function openGPR(file) {
     ? JSON.parse(await boundaryFile.async('string'))
     : null;
 
+  const terrainFile = zip.file('terrain.json');
+  const terrain = terrainFile
+    ? JSON.parse(await terrainFile.async('string'))
+    : null;
+
   const hasDXF = !!zip.file('context/cadmapper.dxf');
 
   // Store as active project
@@ -193,7 +239,7 @@ export async function openGPR(file) {
   _activeProjectId = id;
   _activeZip       = zip;
 
-  return { manifest, reference, design, boundary, hasDXF, zip };
+  return { manifest, reference, design, boundary, terrain, hasDXF, zip };
 }
 
 // ── Get DXF bytes from active project (for re-import) ────────────────────

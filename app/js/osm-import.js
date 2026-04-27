@@ -20,6 +20,7 @@ import { setRealWorldAnchor, utmToWGS84, wgs84ToScene, wgs84ToUTM } from './real
 import { state } from './state.js';
 import { buildLayerPanel } from './cadmapper-import.js';
 import { startLocationPick, stopLocationPick } from './cesium-viewer.js';
+import { addTerrainToGPR } from './gpr-file.js';
 
 // ── Layer config — mirrors cadmapper-import.js LAYER_CONFIG ──────────────
 const LAYER_CONFIG = {
@@ -792,33 +793,60 @@ async function runImport() {
 
 // ── Terrain Web Worker launcher ───────────────────────────────────────────
 function _runTerrainWorker(bbox, zone) {
-  if (typeof Worker === 'undefined') return;
+  if (typeof Worker === 'undefined') {
+    state.terrainStatus = 'unavailable';
+    window.dispatchEvent(new CustomEvent('terrain:status', { detail: { status: 'unavailable' } }));
+    return;
+  }
   const { getRealWorldAnchor } = _callbacks;
   const anchor = typeof getRealWorldAnchor === 'function' ? getRealWorldAnchor() : null;
   const anchorX = anchor?.easting  ?? 0;
   const anchorY = anchor?.northing ?? 0;
 
+  state.terrainStatus = 'fetching';
+  window.dispatchEvent(new CustomEvent('terrain:status', { detail: { status: 'fetching' } }));
+
   const worker = new Worker(new URL('./terrain-worker.js', import.meta.url), { type: 'module' });
-  worker.postMessage({ bbox, zoom: 14, intervalM: 5, zone, anchorX, anchorY });
+  const intervalM = 5;
+  worker.postMessage({ bbox, zoom: 14, intervalM, zone, anchorX, anchorY });
 
   worker.onmessage = ({ data: msg }) => {
     if (msg.type === 'progress') {
       console.log('[terrain]', msg.msg);
     } else if (msg.type === 'done') {
+      const payload = {
+        source: 'aws-terrarium',
+        zoom: 14,
+        intervalM,
+        anchorX, anchorY,
+        points: msg.terrainPoints,
+        contourSegments: Array.from(msg.contourSegments),
+      };
       _buildTerrainFromWorker(msg.terrainPoints, msg.contourSegments);
+      // Persist into the active GPR (best-effort; OK to fail silently if no active project yet)
+      addTerrainToGPR(payload).catch(e => console.warn('[terrain] persist skipped:', e.message));
+      state.terrainStatus = 'ready';
+      state.terrainPayload = payload;
+      window.dispatchEvent(new CustomEvent('terrain:status', { detail: { status: 'ready' } }));
       worker.terminate();
     } else if (msg.type === 'error') {
       console.warn('[terrain worker]', msg.message);
+      state.terrainStatus = 'error';
+      window.dispatchEvent(new CustomEvent('terrain:status', { detail: { status: 'error', message: msg.message } }));
       worker.terminate();
     }
   };
-  worker.onerror = e => { console.warn('[terrain worker error]', e); worker.terminate(); };
+  worker.onerror = e => {
+    console.warn('[terrain worker error]', e);
+    state.terrainStatus = 'error';
+    window.dispatchEvent(new CustomEvent('terrain:status', { detail: { status: 'error', message: e.message } }));
+    worker.terminate();
+  };
 }
 
 function _buildTerrainFromWorker(points, contourSegments) {
   if (!_callbacks?.THREE || !state?.cadmapperGroup) return;
   const T = _callbacks.THREE;
-
   // ── Terrain mesh ─────────────────────────────────────────────────────
   const xs   = [...new Set(points.map(p => Math.round(p.x*10)/10))].sort((a,b)=>a-b);
   const ys   = [...new Set(points.map(p => Math.round(p.y*10)/10))].sort((a,b)=>a-b);
@@ -879,5 +907,22 @@ function _buildTerrainFromWorker(points, contourSegments) {
     state.cadmapperGroup.add(contourGroup);
     buildLayerPanel({ contours: contourGroup });
   }
+}
+
+// ── Rebuild terrain from saved payload (used on .gpr reload) ──────────────
+
+/**
+ * Rebuild terrain mesh + contour groups from a previously-saved payload.
+ * Used by the project loader to restore terrain without re-fetching from AWS.
+ *
+ * @param {Object} payload - { points, contourSegments, ... }
+ */
+export function rebuildTerrainFromPayload(payload) {
+  if (!payload?.points || !payload?.contourSegments) return;
+  _buildTerrainFromWorker(payload.points, payload.contourSegments);
+  state.terrainStatus = 'ready';
+  state.terrainPayload = payload;
+  window.dispatchEvent(new CustomEvent('terrain:status', { detail: { status: 'ready' } }));
+  console.log(`[terrain] rebuilt from saved payload (${payload.points.length} pts)`);
 }
 

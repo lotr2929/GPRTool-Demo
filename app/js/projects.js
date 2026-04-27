@@ -15,6 +15,7 @@
 
 import { setPipelineStatus, showFeedback } from './ui.js';
 import { isLocalFolderSupported, pickLocalSaveFile, writeBlobToHandle } from './local-folder.js';
+import { state } from './state.js';
 
 const API = '/api/projects';
 
@@ -150,6 +151,7 @@ export function showSaveProjectDialog({ blob, blobGetter, defaultName, lat, lng,
               border-radius:4px;color:var(--text-primary);font-size:12px;
               padding:5px 8px;outline:none;"/>
           </div>
+          <div id="spd-terrain-status" style="font-size:11px;color:var(--text-secondary);min-height:14px;display:none;margin-bottom:6px;"></div>
           <div id="spd-error" style="font-size:11px;color:#e06060;min-height:14px;display:none;"></div>
           <div style="display:flex;gap:8px;justify-content:flex-end;">
             <button id="spd-cancel" style="background:none;border:1px solid var(--chrome-border);
@@ -199,7 +201,50 @@ export function showSaveProjectDialog({ blob, blobGetter, defaultName, lat, lng,
       if (listEl) listEl.innerHTML = `<div style="padding:20px;text-align:center;font-size:12px;color:var(--text-secondary);">No existing projects</div>`;
     });
 
-    const close = (saved) => { document.body.removeChild(overlay); resolve(saved); };
+    const close = (saved) => {
+      window.removeEventListener('terrain:status', _onTerrainStatus);
+      document.body.removeChild(overlay);
+      resolve(saved);
+    };
+
+    // ── Terrain readiness gate ────────────────────────────────────────
+    const saveBtn   = overlay.querySelector('#spd-save');
+    const tStatusEl = overlay.querySelector('#spd-terrain-status');
+
+    const _applyTerrainStatus = (status) => {
+      if (status === 'fetching' || status === 'idle') {
+        tStatusEl.style.display = '';
+        tStatusEl.style.color   = 'var(--text-secondary)';
+        tStatusEl.textContent   = 'Generating terrain\u2026 (~30s)';
+        saveBtn.disabled = true;
+        saveBtn.style.opacity = '0.5';
+        saveBtn.style.cursor  = 'not-allowed';
+      } else if (status === 'ready') {
+        tStatusEl.style.display = '';
+        tStatusEl.style.color   = '#4a8a4a';
+        tStatusEl.textContent   = '\u2713 Terrain ready';
+        saveBtn.disabled = false;
+        saveBtn.style.opacity = '1';
+        saveBtn.style.cursor  = 'pointer';
+      } else if (status === 'error' || status === 'unavailable') {
+        tStatusEl.style.display = '';
+        tStatusEl.style.color   = '#c08040';
+        tStatusEl.textContent   = 'Terrain unavailable \u2014 saving without terrain';
+        saveBtn.disabled = false;
+        saveBtn.style.opacity = '1';
+        saveBtn.style.cursor  = 'pointer';
+      } else {
+        // No terrain pipeline ran (e.g. DXF-only project) — no gating needed
+        tStatusEl.style.display = 'none';
+        saveBtn.disabled = false;
+        saveBtn.style.opacity = '1';
+        saveBtn.style.cursor  = 'pointer';
+      }
+    };
+    const _onTerrainStatus = (e) => _applyTerrainStatus(e.detail.status);
+    window.addEventListener('terrain:status', _onTerrainStatus);
+    // Apply current state on open (state.terrainStatus may be undefined on DXF-only)
+    _applyTerrainStatus(state?.terrainStatus);
 
     overlay.querySelector('#spd-skip').addEventListener('click',   () => close(false));
     overlay.querySelector('#spd-cancel').addEventListener('click', () => close(false));
