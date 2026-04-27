@@ -675,17 +675,20 @@ body {
   border: 1px solid var(--chrome-border);
   border-radius: 4px;
   overflow: hidden;
+  box-sizing: border-box;
   z-index: 1000;
   box-shadow: 0 2px 8px rgba(0,0,0,0.18);
 }
 
 .mode-btn {
-  background: transparent;
-  border: none;
-  padding: 0;
-  cursor: pointer;
+  flex: 0 0 36px;
   width: 36px;
   height: 28px;
+  margin: 0;
+  padding: 0;
+  background: transparent;
+  border: none;
+  cursor: pointer;
   box-sizing: border-box;
   display: flex;
   align-items: center;
