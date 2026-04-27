@@ -20,7 +20,9 @@ import { setRealWorldAnchor, utmToWGS84, wgs84ToScene, wgs84ToUTM } from './real
 import { state } from './state.js';
 import { buildLayerPanel } from './cadmapper-import.js';
 import { startLocationPick, stopLocationPick } from './cesium-viewer.js';
-import { addTerrainToGPR } from './gpr-file.js';
+import { addTerrainToGPR, getActiveGPRBlob } from './gpr-file.js';
+import { writeBlobToHandle } from './local-folder.js';
+import { setPipelineStatus } from './ui.js';
 
 // ── Layer config — mirrors cadmapper-import.js LAYER_CONFIG ──────────────
 const LAYER_CONFIG = {
@@ -895,9 +897,21 @@ function _runTerrainWorker(bbox, zone) {
   const intervalM = 5;
   worker.postMessage({ bbox, zoom: 14, intervalM, zone, anchorX, anchorY });
 
-  worker.onmessage = ({ data: msg }) => {
+  worker.onmessage = async ({ data: msg }) => {
     if (msg.type === 'progress') {
-      console.log('[terrain]', msg.msg);
+      // Structured per-stage progress: {stage:'tiles'|'contours', done, total}
+      if (msg.stage && typeof msg.done === 'number' && typeof msg.total === 'number') {
+        const pct = Math.round((msg.done / Math.max(1, msg.total)) * 100);
+        const label = msg.stage === 'tiles'
+          ? `Terrain: tiles ${msg.done}/${msg.total} (${pct}%)`
+          : `Terrain: contours ${pct}%`;
+        setPipelineStatus(label, 'busy');
+        window.dispatchEvent(new CustomEvent('terrain:progress',
+          { detail: { stage: msg.stage, done: msg.done, total: msg.total, pct } }));
+      } else {
+        // Legacy progress with msg only (kept for safety)
+        console.log('[terrain]', msg.msg);
+      }
     } else if (msg.type === 'done') {
       const payload = {
         source: 'aws-terrarium',
@@ -908,16 +922,39 @@ function _runTerrainWorker(bbox, zone) {
         contourSegments: Array.from(msg.contourSegments),
       };
       _buildTerrainFromWorker(msg.terrainPoints, msg.contourSegments);
-      // Persist into the active GPR (best-effort; OK to fail silently if no active project yet)
-      addTerrainToGPR(payload).catch(e => console.warn('[terrain] persist skipped:', e.message));
       state.terrainStatus = 'ready';
       state.terrainPayload = payload;
       window.dispatchEvent(new CustomEvent('terrain:status', { detail: { status: 'ready' } }));
       worker.terminate();
+
+      // Persist into the active GPR; if a local file handle exists from a prior
+      // Save, also re-write the file on disk so the saved .gpr gains terrain.
+      try {
+        await addTerrainToGPR(payload);
+        if (state.activeFileHandle) {
+          try {
+            const blob = await getActiveGPRBlob();
+            await writeBlobToHandle(state.activeFileHandle, blob);
+            setPipelineStatus('\u2713 Terrain attached', 'done');
+          } catch (e) {
+            console.warn('[terrain] re-write of local file failed:', e);
+            setPipelineStatus('Terrain saved (cloud only)', 'done');
+          }
+        } else {
+          setPipelineStatus('\u2713 Terrain ready', 'done');
+        }
+      } catch (e) {
+        console.warn('[terrain] persist skipped:', e.message);
+        setPipelineStatus('\u2713 Terrain ready', 'done');
+      }
+      // Fade the pill back to a neutral state after 3s
+      setTimeout(() => setPipelineStatus('Ready', 'idle'), 3000);
     } else if (msg.type === 'error') {
       console.warn('[terrain worker]', msg.message);
       state.terrainStatus = 'error';
       window.dispatchEvent(new CustomEvent('terrain:status', { detail: { status: 'error', message: msg.message } }));
+      setPipelineStatus('Terrain unavailable', 'error');
+      setTimeout(() => setPipelineStatus('Ready', 'idle'), 3000);
       worker.terminate();
     }
   };

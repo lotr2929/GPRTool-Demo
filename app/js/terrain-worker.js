@@ -72,7 +72,7 @@ async function fetchTile(tx, ty, z, anchorX, anchorY) {
 }
 
 // ── Marching squares contour generation ──────────────────────────────────
-function buildContours(points, intervalM) {
+async function buildContours(points, intervalM) {
   if (!points.length) return [];
 
   // Build XY grid
@@ -84,6 +84,10 @@ function buildContours(points, intervalM) {
   const minE = Math.floor(Math.min(...points.map(p=>p.ele)) / intervalM) * intervalM;
   const maxE = Math.ceil (Math.max(...points.map(p=>p.ele)) / intervalM) * intervalM;
   const segments = []; // flat array: [x0,y0,ele, x1,y1,ele, ...]
+
+  const totalLevels = Math.max(1, Math.round((maxE - minE) / intervalM) + 1);
+  let levelIdx = 0;
+  self.postMessage({ type: 'progress', stage: 'contours', done: 0, total: totalLevels });
 
   for (let elev = minE; elev <= maxE; elev += intervalM) {
     for (let iy = 0; iy < ys.length-1; iy++) {
@@ -102,6 +106,10 @@ function buildContours(points, intervalM) {
         if (pts.length >= 2) segments.push(pts[0][0], pts[0][1], elev, pts[1][0], pts[1][1], elev);
       }
     }
+    levelIdx++;
+    self.postMessage({ type: 'progress', stage: 'contours', done: levelIdx, total: totalLevels });
+    // Yield event loop so progress messages flush in real time
+    await new Promise(r => setTimeout(r, 0));
   }
   return segments;
 }
@@ -114,19 +122,30 @@ self.onmessage = async ({ data }) => {
   _zone = zone;
 
   try {
-    self.postMessage({ type: 'progress', msg: 'Fetching elevation tiles\u2026' });
-
     const txMin = lonToTileX(bbox.west,  zoom);
     const txMax = lonToTileX(bbox.east,  zoom);
     const tyMin = latToTileY(bbox.north, zoom);
     const tyMax = latToTileY(bbox.south, zoom);
+    const totalTiles = (txMax - txMin + 1) * (tyMax - tyMin + 1);
 
-    const promises = [];
-    for (let tx = txMin; tx <= txMax; tx++)
-      for (let ty = tyMin; ty <= tyMax; ty++)
-        promises.push(fetchTile(tx, ty, zoom, anchorX, anchorY));
+    self.postMessage({ type: 'progress', stage: 'tiles', done: 0, total: totalTiles });
 
-    const tiles  = await Promise.all(promises);
+    // Fetch in parallel BUT count completions as they resolve so the main
+    // thread sees real-time progress instead of a 30s silent wait.
+    let doneTiles = 0;
+    const tilePromises = [];
+    for (let tx = txMin; tx <= txMax; tx++) {
+      for (let ty = tyMin; ty <= tyMax; ty++) {
+        tilePromises.push(
+          fetchTile(tx, ty, zoom, anchorX, anchorY).then(result => {
+            doneTiles++;
+            self.postMessage({ type: 'progress', stage: 'tiles', done: doneTiles, total: totalTiles });
+            return result;
+          })
+        );
+      }
+    }
+    const tiles  = await Promise.all(tilePromises);
     const points = tiles.flatMap(t => t?.points ?? []);
 
     if (points.length < 4) {
@@ -134,8 +153,7 @@ self.onmessage = async ({ data }) => {
       return;
     }
 
-    self.postMessage({ type: 'progress', msg: 'Generating contours\u2026' });
-    const contourSegments = buildContours(points, intervalM);
+    const contourSegments = await buildContours(points, intervalM);
 
     self.postMessage({ type: 'done', terrainPoints: points, contourSegments });
   } catch (err) {

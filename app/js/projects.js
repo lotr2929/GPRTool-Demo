@@ -207,7 +207,9 @@ export function showSaveProjectDialog({ blob, blobGetter, defaultName, lat, lng,
       resolve(saved);
     };
 
-    // ── Terrain readiness gate ────────────────────────────────────────
+    // ── Terrain status (informational only — Save is always enabled) ─
+    // Header pipeline-status pill shows live %; this just labels the case
+    // where terrain is still loading so the user knows what to expect.
     const saveBtn   = overlay.querySelector('#spd-save');
     const tStatusEl = overlay.querySelector('#spd-terrain-status');
 
@@ -215,30 +217,18 @@ export function showSaveProjectDialog({ blob, blobGetter, defaultName, lat, lng,
       if (status === 'fetching' || status === 'idle') {
         tStatusEl.style.display = '';
         tStatusEl.style.color   = 'var(--text-secondary)';
-        tStatusEl.textContent   = 'Generating terrain\u2026 (~30s)';
-        saveBtn.disabled = true;
-        saveBtn.style.opacity = '0.5';
-        saveBtn.style.cursor  = 'not-allowed';
+        tStatusEl.textContent   = 'Terrain still loading \u2014 will attach in background after save';
       } else if (status === 'ready') {
         tStatusEl.style.display = '';
         tStatusEl.style.color   = '#4a8a4a';
         tStatusEl.textContent   = '\u2713 Terrain ready';
-        saveBtn.disabled = false;
-        saveBtn.style.opacity = '1';
-        saveBtn.style.cursor  = 'pointer';
       } else if (status === 'error' || status === 'unavailable') {
         tStatusEl.style.display = '';
         tStatusEl.style.color   = '#c08040';
         tStatusEl.textContent   = 'Terrain unavailable \u2014 saving without terrain';
-        saveBtn.disabled = false;
-        saveBtn.style.opacity = '1';
-        saveBtn.style.cursor  = 'pointer';
       } else {
-        // No terrain pipeline ran (e.g. DXF-only project) — no gating needed
+        // No terrain pipeline ran (e.g. DXF-only project)
         tStatusEl.style.display = 'none';
-        saveBtn.disabled = false;
-        saveBtn.style.opacity = '1';
-        saveBtn.style.cursor  = 'pointer';
       }
     };
     const _onTerrainStatus = (e) => _applyTerrainStatus(e.detail.status);
@@ -277,6 +267,9 @@ export function showSaveProjectDialog({ blob, blobGetter, defaultName, lat, lng,
 
       // STEP 2: close dialog, run Supabase + local write in parallel
       close(true);
+      // Stash file handle so a still-running terrain worker can re-write
+      // the saved file when it completes (background terrain attach).
+      state.activeFileHandle = fileHandle;
       setPipelineStatus('Saving\u2026', 'busy');
       (async () => {
         try {

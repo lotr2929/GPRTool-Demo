@@ -50,6 +50,7 @@ export const state = {
   // ── Terrain (AWS Terrarium / DXF topography) ──────────────────────────────
   terrainStatus:   null,   // null | 'idle' | 'fetching' | 'ready' | 'error' | 'unavailable'
   terrainPayload:  null,   // last successful terrain payload (for save/reload)
+  activeFileHandle: null,  // FileSystemFileHandle from last local Save — used to re-write when background terrain attaches
   sitePinDom:      null,
   sitePinWorldPos: null,
   siteOriginLon:   0,
