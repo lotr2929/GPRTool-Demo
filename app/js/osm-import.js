@@ -1013,7 +1013,7 @@ function _runTerrainWorker(bbox, zone) {
         points: msg.terrainPoints,
         contourSegments: Array.from(msg.contourSegments),
       };
-      _buildTerrainFromWorker(msg.terrainPoints, msg.contourSegments);
+      _buildTerrainFromWorker(msg.terrainPoints, msg.contourSegments).then(async () => {
       state.terrainStatus = 'ready';
       state.terrainPayload = payload;
       window.dispatchEvent(new CustomEvent('terrain:status', { detail: { status: 'ready' } }));
@@ -1041,6 +1041,7 @@ function _runTerrainWorker(bbox, zone) {
       }
       // Fade the pill back to a neutral state after 3s
       setTimeout(() => setPipelineStatus('Ready', 'idle'), 3000);
+      });
     } else if (msg.type === 'error') {
       console.warn('[terrain worker]', msg.message);
       state.terrainStatus = 'error';
@@ -1058,15 +1059,22 @@ function _runTerrainWorker(bbox, zone) {
   };
 }
 
-function _buildTerrainFromWorker(points, contourSegments) {
+async function _buildTerrainFromWorker(points, contourSegments) {
   if (!_callbacks?.THREE || !state?.cadmapperGroup) return;
   const T = _callbacks.THREE;
-  // ── Terrain mesh ─────────────────────────────────────────────────────
+  // Yield to the browser between heavy phases so the main thread stays responsive.
+  // Without this, the synchronous build (~30s for a 500m radius) blocks all input
+  // and Edge raises "page isn't responding" — see N-93.
+  const yieldFrame = () => new Promise(r => requestAnimationFrame(r));
+
+  // ── Phase 1: Grid lookup tables ──────────────────────────────────────
   const xs   = [...new Set(points.map(p => Math.round(p.x*10)/10))].sort((a,b)=>a-b);
   const ys   = [...new Set(points.map(p => Math.round(p.y*10)/10))].sort((a,b)=>a-b);
   const grid = new Map();
   for (const p of points) grid.set(`${Math.round(p.x*10)/10},${Math.round(p.y*10)/10}`, p.ele);
+  await yieldFrame();
 
+  // ── Phase 2: Vertex buffer ───────────────────────────────────────────
   const verts = [], indices = [], idxMap = new Map();
   let vi = 0;
   for (let iy = 0; iy < ys.length; iy++) {
@@ -1077,6 +1085,9 @@ function _buildTerrainFromWorker(points, contourSegments) {
       idxMap.set(`${ix},${iy}`, vi++);
     }
   }
+  await yieldFrame();
+
+  // ── Phase 3: Index buffer ────────────────────────────────────────────
   for (let iy = 0; iy < ys.length-1; iy++) {
     for (let ix = 0; ix < xs.length-1; ix++) {
       const a=idxMap.get(`${ix},${iy}`), b=idxMap.get(`${ix+1},${iy}`);
@@ -1085,7 +1096,9 @@ function _buildTerrainFromWorker(points, contourSegments) {
       indices.push(a,b,c, b,d,c);
     }
   }
+  await yieldFrame();
 
+  // ── Phase 4: Build mesh + attach ─────────────────────────────────────
   if (indices.length) {
     const geom = new T.BufferGeometry();
     geom.setAttribute('position', new T.BufferAttribute(new Float32Array(verts), 3));
@@ -1102,8 +1115,9 @@ function _buildTerrainFromWorker(points, contourSegments) {
     state.cadmapperGroup.add(terrainGroup);
     appendLayerToPanel('topography', terrainGroup);
   }
+  await yieldFrame();
 
-  // ── Contour lines ─────────────────────────────────────────────────────
+  // ── Phase 5: Contour vertex buffer ───────────────────────────────────
   if (contourSegments.length >= 6) {
     const vBuf = new Float32Array(contourSegments.length);
     for (let i = 0; i < contourSegments.length; i += 6) {
@@ -1111,6 +1125,9 @@ function _buildTerrainFromWorker(points, contourSegments) {
       vBuf[i]   = contourSegments[i];   vBuf[i+1] = contourSegments[i+2]; vBuf[i+2] = -contourSegments[i+1];
       vBuf[i+3] = contourSegments[i+3]; vBuf[i+4] = contourSegments[i+5]; vBuf[i+5] = -contourSegments[i+4];
     }
+    await yieldFrame();
+
+    // ── Phase 6: Build contour geometry + attach ──────────────────────
     const geom = new T.BufferGeometry();
     geom.setAttribute('position', new T.BufferAttribute(vBuf, 3));
     const contourGroup = new T.Group();
@@ -1131,9 +1148,9 @@ function _buildTerrainFromWorker(points, contourSegments) {
  *
  * @param {Object} payload - { points, contourSegments, ... }
  */
-export function rebuildTerrainFromPayload(payload) {
+export async function rebuildTerrainFromPayload(payload) {
   if (!payload?.points || !payload?.contourSegments) return;
-  _buildTerrainFromWorker(payload.points, payload.contourSegments);
+  await _buildTerrainFromWorker(payload.points, payload.contourSegments);
   state.terrainStatus = 'ready';
   state.terrainPayload = payload;
   window.dispatchEvent(new CustomEvent('terrain:status', { detail: { status: 'ready' } }));
