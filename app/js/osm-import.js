@@ -18,7 +18,7 @@
 
 import { setRealWorldAnchor, utmToWGS84, wgs84ToScene, wgs84ToUTM } from './real-world.js';
 import { state } from './state.js';
-import { buildLayerPanel } from './cadmapper-import.js';
+import { buildLayerPanel, appendLayerToPanel } from './cadmapper-import.js';
 import { startLocationPick, stopLocationPick, startIdentifyPick, stopIdentifyPick } from './cesium-viewer.js';
 import { addTerrainToGPR, getActiveGPRBlob } from './gpr-file.js';
 import { writeBlobToHandle } from './local-folder.js';
@@ -1100,7 +1100,7 @@ function _buildTerrainFromWorker(points, contourSegments) {
     terrainGroup.name = 'topography';
     terrainGroup.add(mesh);
     state.cadmapperGroup.add(terrainGroup);
-    buildLayerPanel({ topography: terrainGroup });
+    appendLayerToPanel('topography', terrainGroup);
   }
 
   // ── Contour lines ─────────────────────────────────────────────────────
@@ -1119,7 +1119,7 @@ function _buildTerrainFromWorker(points, contourSegments) {
     contourGroup.add(new T.LineSegments(geom,
       new T.LineBasicMaterial({ color: 0xa08860, opacity: 0.7, transparent: true })));
     state.cadmapperGroup.add(contourGroup);
-    buildLayerPanel({ contours: contourGroup });
+    appendLayerToPanel('contours', contourGroup);
   }
 }
 

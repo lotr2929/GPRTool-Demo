@@ -565,33 +565,50 @@ export function buildLayerPanel(layerGroups, container) {
   });
 
   for (const [layer, group] of Object.entries(layerGroups)) {
-    const cfg   = LAYER_CONFIG[layer] || { label: layer };
-    const count = group.children.length;
-    const row   = document.createElement('div');
-    row.className    = 'info-row';
-    row.style.cursor = 'pointer';
-    const label = document.createElement('label');
-    label.style.cssText = 'display:flex;align-items:center;gap:8px;cursor:pointer;width:100%;';
-    const cb = document.createElement('input');
-    cb.type = 'checkbox'; cb.checked = true; cb.className = 'layer-cb';
-    cb.style.cssText = 'accent-color:var(--accent-mid,#4a8a4a);';
-    cb.addEventListener('change', () => { group.visible = cb.checked; });
-    const dot = document.createElement('span');
-    dot.style.cssText = `width:8px;height:8px;border-radius:50%;flex-shrink:0;
-      background:#${(LAYER_CONFIG[layer]?.color ?? 0xaaaaaa).toString(16).padStart(6,'0')};`;
-    const name = document.createElement('span');
-    name.style.cssText = 'flex:1;font-size:12px;'; name.textContent = cfg.label;
-    const cnt = document.createElement('span');
-    cnt.style.cssText = 'font-size:10px;color:var(--text-secondary);'; cnt.textContent = count;
-    label.append(cb, dot, name, cnt);
-    row.appendChild(label);
-    section.appendChild(row);
+    section.appendChild(_buildLayerRow(layer, group));
   }
 
   const viewActions  = document.getElementById('view-actions-section');
   const panelContent = container || document.querySelector('#right-panel .panel-content');
   if (viewActions && panelContent) panelContent.insertBefore(section, viewActions);
   else if (panelContent) panelContent.appendChild(section);
+  return section;
+}
+
+// ── Private: build a single layer row (checkbox + colour dot + label + count) ──
+function _buildLayerRow(layer, group) {
+  const cfg   = LAYER_CONFIG[layer] || { label: layer };
+  const count = group.children.length;
+  const row   = document.createElement('div');
+  row.className    = 'info-row';
+  row.style.cursor = 'pointer';
+  const label = document.createElement('label');
+  label.style.cssText = 'display:flex;align-items:center;gap:8px;cursor:pointer;width:100%;';
+  const cb = document.createElement('input');
+  cb.type = 'checkbox'; cb.checked = true; cb.className = 'layer-cb';
+  cb.style.cssText = 'accent-color:var(--accent-mid,#4a8a4a);';
+  cb.addEventListener('change', () => { group.visible = cb.checked; });
+  const dot = document.createElement('span');
+  dot.style.cssText = `width:8px;height:8px;border-radius:50%;flex-shrink:0;
+    background:#${(LAYER_CONFIG[layer]?.color ?? 0xaaaaaa).toString(16).padStart(6,'0')};`;
+  const name = document.createElement('span');
+  name.style.cssText = 'flex:1;font-size:12px;'; name.textContent = cfg.label;
+  const cnt = document.createElement('span');
+  cnt.style.cssText = 'font-size:10px;color:var(--text-secondary);'; cnt.textContent = count;
+  label.append(cb, dot, name, cnt);
+  row.appendChild(label);
+  return row;
+}
+
+// ── Append a single layer row to an existing layer panel section ──────────
+// Used by osm-import.js when terrain + contours arrive after the main panel
+// has already been built. Falls back to a full panel build if no section exists.
+export function appendLayerToPanel(layer, group) {
+  const section = document.getElementById('cadmapper-layer-section');
+  if (!section) {
+    return buildLayerPanel({ [layer]: group });
+  }
+  section.appendChild(_buildLayerRow(layer, group));
   return section;
 }
 
