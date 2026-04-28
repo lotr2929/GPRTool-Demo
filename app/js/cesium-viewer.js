@@ -569,6 +569,7 @@ let _locationMarker      = null;
 export function startLocationPick(callback) {
   if (!_viewer) return;
   stopLocationPick();
+  stopIdentifyPick();   // mutually exclusive
   _viewer.container.style.cursor = 'crosshair';
   _locationPickHandler = new Cesium.ScreenSpaceEventHandler(_viewer.scene.canvas);
   _locationPickHandler.setInputAction(e => {
@@ -600,4 +601,32 @@ export function stopLocationPick() {
   if (_locationPickHandler) { _locationPickHandler.destroy(); _locationPickHandler = null; }
   if (_viewer) _viewer.container.style.cursor = '';
   if (_locationMarker) { _viewer.entities.remove(_locationMarker); _locationMarker = null; }
+}
+
+// ── Identify pick: click → lat/lng → callback (no marker placed) ──────────
+// Mirrors startLocationPick but without site-marker side effects. Used for
+// "what is this building?" reverse-geocode lookups against the Cesium 3D
+// Tiles. Only one of locate / identify can be active at a time — starting
+// either stops the other.
+let _identifyPickHandler = null;
+
+export function startIdentifyPick(callback) {
+  if (!_viewer) return;
+  stopLocationPick();   // mutually exclusive
+  stopIdentifyPick();
+  _viewer.container.style.cursor = 'help';
+  _identifyPickHandler = new Cesium.ScreenSpaceEventHandler(_viewer.scene.canvas);
+  _identifyPickHandler.setInputAction(e => {
+    const pos = _pickCartesian(e.position);
+    if (!pos) return;
+    const carto = Cesium.Cartographic.fromCartesian(pos);
+    const lat   = Cesium.Math.toDegrees(carto.latitude);
+    const lng   = Cesium.Math.toDegrees(carto.longitude);
+    callback({ lat, lng });
+  }, Cesium.ScreenSpaceEventType.LEFT_CLICK);
+}
+
+export function stopIdentifyPick() {
+  if (_identifyPickHandler) { _identifyPickHandler.destroy(); _identifyPickHandler = null; }
+  if (_viewer) _viewer.container.style.cursor = '';
 }

@@ -75,14 +75,35 @@ async function fetchTile(tx, ty, z, anchorX, anchorY) {
 async function buildContours(points, intervalM) {
   if (!points.length) return [];
 
-  // Build XY grid
+  // Build XY axis arrays + integer-indexed grid (typed array, no string keys).
+  // The Map-of-strings approach was ~10–30× slower because every cell required
+  // `${x},${y}` allocation and a hash lookup. Same elevations stored, same
+  // algorithm, same output -- just integer offsets instead of string keys.
   const xs = [...new Set(points.map(p => Math.round(p.x * 10) / 10))].sort((a,b)=>a-b);
   const ys = [...new Set(points.map(p => Math.round(p.y * 10) / 10))].sort((a,b)=>a-b);
-  const grid = new Map();
-  for (const p of points) grid.set(`${Math.round(p.x*10)/10},${Math.round(p.y*10)/10}`, p.ele);
+  const xCount = xs.length, yCount = ys.length;
 
-  const minE = Math.floor(Math.min(...points.map(p=>p.ele)) / intervalM) * intervalM;
-  const maxE = Math.ceil (Math.max(...points.map(p=>p.ele)) / intervalM) * intervalM;
+  // Reverse-lookup: coord -> index. Built once.
+  const xIndex = new Map();  for (let i = 0; i < xCount; i++) xIndex.set(xs[i], i);
+  const yIndex = new Map();  for (let i = 0; i < yCount; i++) yIndex.set(ys[i], i);
+
+  const grid = new Float32Array(xCount * yCount);  // elevations
+  const has  = new Uint8Array(xCount * yCount);    // 1 = data present (0 m elevation is valid, so we need a separate mask)
+
+  let minE = Infinity, maxE = -Infinity;
+  for (const p of points) {
+    const ix = xIndex.get(Math.round(p.x * 10) / 10);
+    const iy = yIndex.get(Math.round(p.y * 10) / 10);
+    if (ix === undefined || iy === undefined) continue;
+    const k = iy * xCount + ix;
+    grid[k] = p.ele;
+    has[k]  = 1;
+    if (p.ele < minE) minE = p.ele;
+    if (p.ele > maxE) maxE = p.ele;
+  }
+
+  minE = Math.floor(minE / intervalM) * intervalM;
+  maxE = Math.ceil (maxE / intervalM) * intervalM;
   const segments = []; // flat array: [x0,y0,ele, x1,y1,ele, ...]
 
   const totalLevels = Math.max(1, Math.round((maxE - minE) / intervalM) + 1);
@@ -90,13 +111,17 @@ async function buildContours(points, intervalM) {
   self.postMessage({ type: 'progress', stage: 'contours', done: 0, total: totalLevels });
 
   for (let elev = minE; elev <= maxE; elev += intervalM) {
-    for (let iy = 0; iy < ys.length-1; iy++) {
-      for (let ix = 0; ix < xs.length-1; ix++) {
-        const v00 = grid.get(`${xs[ix]},${ys[iy]}`);
-        const v10 = grid.get(`${xs[ix+1]},${ys[iy]}`);
-        const v01 = grid.get(`${xs[ix]},${ys[iy+1]}`);
-        const v11 = grid.get(`${xs[ix+1]},${ys[iy+1]}`);
-        if (v00===undefined||v10===undefined||v01===undefined||v11===undefined) continue;
+    for (let iy = 0; iy < yCount - 1; iy++) {
+      const rowA = iy * xCount;
+      const rowB = (iy + 1) * xCount;
+      for (let ix = 0; ix < xCount - 1; ix++) {
+        const kA = rowA + ix, kB = rowB + ix;
+        // All four corners must have data
+        if (!has[kA] || !has[kA + 1] || !has[kB] || !has[kB + 1]) continue;
+        const v00 = grid[kA];        // (ix,   iy)
+        const v10 = grid[kA + 1];    // (ix+1, iy)
+        const v01 = grid[kB];        // (ix,   iy+1)
+        const v11 = grid[kB + 1];    // (ix+1, iy+1)
         const lerp = (a,b,va,vb) => a + (b-a)*(elev-va)/(vb-va);
         const pts = [];
         if ((v00<elev)!==(v10<elev)) pts.push([lerp(xs[ix],xs[ix+1],v00,v10), ys[iy]]);

@@ -50,6 +50,10 @@ This will also affect:
 - Photos and rasters: `app/assets/images/` only.
 - Third-party libraries: `app/js/lib/` -- never edit these files.
 - The north point SVG is defined once and used by both viewports.
+- **Data sources: free + global only** (OSM, AWS Terrarium, equivalents).
+  No paid or jurisdiction-specific sources (Landgate SLIP LiDAR, ELVIS,
+  etc.) in the core app -- app is for educational use. Commercial-grade
+  precision is added per-instance later, not in core.
 
 ## Debugging
 

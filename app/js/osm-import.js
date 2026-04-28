@@ -19,7 +19,7 @@
 import { setRealWorldAnchor, utmToWGS84, wgs84ToScene, wgs84ToUTM } from './real-world.js';
 import { state } from './state.js';
 import { buildLayerPanel } from './cadmapper-import.js';
-import { startLocationPick, stopLocationPick } from './cesium-viewer.js';
+import { startLocationPick, stopLocationPick, startIdentifyPick, stopIdentifyPick } from './cesium-viewer.js';
 import { addTerrainToGPR, getActiveGPRBlob } from './gpr-file.js';
 import { writeBlobToHandle } from './local-folder.js';
 import { setPipelineStatus } from './ui.js';
@@ -83,6 +83,15 @@ const MODAL_HTML = `
       <span id="osm-pick-hint-a" style="font-size:11px;color:#90c890;flex:1;">
         &#8595; Or click anywhere on the 3D map
       </span>
+      <button id="osm-identify-btn" type="button" title="Toggle: click to identify a building (Nominatim lookup)"
+        style="background:none;border:1px solid rgba(255,255,255,0.3);border-radius:4px;
+        color:rgba(255,255,255,0.85);cursor:pointer;font-size:11px;padding:3px 9px;
+        margin-right:6px;display:flex;align-items:center;gap:5px;">
+        <svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6">
+          <circle cx="8" cy="8" r="6.5"/><path d="M8 7v4.5M8 4.5v0.01" stroke-linecap="round"/>
+        </svg>
+        Identify
+      </button>
       <button id="osm-close-a" type="button" style="background:none;border:none;color:rgba(255,255,255,0.7);
         cursor:pointer;font-size:18px;line-height:1;padding:0 4px;">&#x2715;</button>
     </div>
@@ -178,25 +187,108 @@ export function initOSMImport(callbacks) {
   document.getElementById('osm-back-btn').addEventListener('click', _backToPhaseA);
   document.getElementById('osm-import-btn').addEventListener('click', runImport);
   document.getElementById('osm-search-btn').addEventListener('click', searchAddress);
+  document.getElementById('osm-identify-btn').addEventListener('click', _toggleIdentify);
 }
 
 function openModal() {
   document.getElementById('osm-overlay').style.display = 'block';
   _showPhaseA();
-  // Activate Cesium click-to-pick — clicking on the 3D scene sets lat/lng
-  // and promotes A → B (a confirmed location is the trigger to enter Phase B).
-  startLocationPick(({ lat, lng }) => {
-    document.getElementById('osm-lat').value = lat.toFixed(7);
-    document.getElementById('osm-lng').value = lng.toFixed(7);
-    setStatus('Location set \u2014 select radius and click Import.');
-    const hint = document.getElementById('osm-pick-hint-a');
-    if (hint) hint.textContent = `\u2713 ${lat.toFixed(5)}, ${lng.toFixed(5)} \u2014 click again to reposition`;
-    _showPhaseB();
-  });
+  // Default mode on open: Locate Site (clicks set site centre).
+  _setLocateMode();
 }
 function closeModal() {
   document.getElementById('osm-overlay').style.display = 'none';
   stopLocationPick();
+  stopIdentifyPick();
+  _identifyMode = false;
+  _renderIdentifyBtn();
+}
+
+// ── Locate ↔ Identify mode toggle ────────────────────────────────────────
+let _identifyMode = false;
+
+function _locateCallback({ lat, lng }) {
+  document.getElementById('osm-lat').value = lat.toFixed(7);
+  document.getElementById('osm-lng').value = lng.toFixed(7);
+  setStatus('Location set \u2014 select radius and click Import.');
+  const hint = document.getElementById('osm-pick-hint-a');
+  if (hint) hint.textContent = `\u2713 ${lat.toFixed(5)}, ${lng.toFixed(5)} \u2014 click again to reposition`;
+  _showPhaseB();
+}
+
+function _setLocateMode() {
+  _identifyMode = false;
+  _renderIdentifyBtn();
+  const hint = document.getElementById('osm-pick-hint-a');
+  if (hint) hint.textContent = '\u2193 Or click anywhere on the 3D map';
+  startLocationPick(_locateCallback);
+}
+
+function _setIdentifyMode() {
+  _identifyMode = true;
+  _renderIdentifyBtn();
+  const hint = document.getElementById('osm-pick-hint-a');
+  if (hint) hint.textContent = 'Click any building to identify it';
+  startIdentifyPick(({ lat, lng }) => _identifyAt(lat, lng));
+}
+
+function _toggleIdentify() {
+  if (_identifyMode) _setLocateMode(); else _setIdentifyMode();
+}
+
+function _renderIdentifyBtn() {
+  const btn = document.getElementById('osm-identify-btn');
+  if (!btn) return;
+  if (_identifyMode) {
+    btn.style.background = 'var(--accent-mid,#4a8a4a)';
+    btn.style.color = '#fff';
+    btn.style.borderColor = 'rgba(255,255,255,0.6)';
+  } else {
+    btn.style.background = 'none';
+    btn.style.color = 'rgba(255,255,255,0.85)';
+    btn.style.borderColor = 'rgba(255,255,255,0.3)';
+  }
+}
+
+// Reverse-geocode via Nominatim and update the Phase A hint span with the result.
+async function _identifyAt(lat, lng) {
+  const hint = document.getElementById('osm-pick-hint-a');
+  if (!hint) return;
+  hint.textContent = `Looking up ${lat.toFixed(5)}, ${lng.toFixed(5)}\u2026`;
+  try {
+    const url = `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json&zoom=18&addressdetails=1&namedetails=1`;
+    const res = await fetch(url);
+    if (!res.ok) { hint.textContent = `Lookup failed (HTTP ${res.status})`; return; }
+    const data = await res.json();
+    if (!data || data.error) { hint.textContent = 'No OSM record at this point'; return; }
+    const a = data.address || {};
+    const name =
+      data.namedetails?.name ||
+      a.building_name ||
+      a.amenity ||
+      a.shop ||
+      a.tourism ||
+      a.historic ||
+      a.office ||
+      null;
+    const street = [a.house_number, a.road].filter(Boolean).join(' ');
+    const city   = a.city || a.town || a.suburb || a.village || '';
+    const tag    = (data.type && data.type !== 'building' && data.type !== 'yes')
+      ? data.type
+      : (a.building && a.building !== 'yes' ? a.building : null);
+
+    let label;
+    if (name && street)         label = `${name} \u2014 ${street}${city ? ', ' + city : ''}`;
+    else if (name)              label = `${name}${city ? ' \u2014 ' + city : ''}`;
+    else if (street)            label = `${street}${city ? ', ' + city : ''}`;
+    else if (data.display_name) label = data.display_name.slice(0, 90);
+    else                        label = 'Unknown location';
+    if (tag) label += `  (${tag})`;
+    hint.textContent = label;
+  } catch (err) {
+    console.warn('[identify]', err);
+    hint.textContent = 'Lookup failed: ' + err.message;
+  }
 }
 
 // ── Phase transitions ─────────────────────────────────────────────────────
