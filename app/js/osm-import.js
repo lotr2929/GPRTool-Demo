@@ -262,7 +262,7 @@ async function _identifyAt(lat, lng) {
   if (!hint) return;
   hint.textContent = `Looking up ${lat.toFixed(5)}, ${lng.toFixed(5)}\u2026`;
   try {
-    const url = `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json&zoom=18&addressdetails=1&namedetails=1`;
+    const url = `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json&zoom=17&addressdetails=1&namedetails=1`;
     const res = await fetch(url);
     if (!res.ok) { hint.textContent = `Lookup failed (HTTP ${res.status})`; return; }
     const data = await res.json();
@@ -347,7 +347,7 @@ function _startHoverTooltip() {
       _abort = new AbortController();
       try {
         const url  = `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}`
-          + `&format=json&zoom=18&addressdetails=1&namedetails=1`;
+          + `&format=json&zoom=17&addressdetails=1&namedetails=1`;
         const res  = await fetch(url, { signal: _abort.signal });
         if (!res.ok) return;
         const data = await res.json();
@@ -390,17 +390,31 @@ function _getLastHoverLabel(lat, lng) {
 }
 
 // Format a Nominatim reverse-geocode response into a short human-readable label.
+// Shows building name + street address. Skips POI/shop/amenity names — those
+// are not useful for labelling a site file.
 function _formatNominatimLabel(data) {
   if (!data || data.error) return null;
-  const a    = data.address || {};
-  const name = data.namedetails?.name || a.building_name || a.amenity
-    || a.shop || a.tourism || a.historic || a.office || null;
-  const street = [a.house_number, a.road].filter(Boolean).join(' ');
-  const city   = a.city || a.town || a.suburb || a.village || '';
-  if (name && street) return `${name} \u2014 ${street}${city ? ', ' + city : ''}`;
-  if (name)           return `${name}${city ? ' \u2014 ' + city : ''}`;
-  if (street)         return `${street}${city ? ', ' + city : ''}`;
-  return (data.display_name || '').slice(0, 80) || null;
+  const a = data.address || {};
+
+  // Street address (the most reliable identifier)
+  const street  = [a.house_number, a.road || a.pedestrian || a.footway].filter(Boolean).join(' ');
+  const suburb  = a.suburb || a.neighbourhood || a.city_district || '';
+  const city    = a.city || a.town || a.village || '';
+  const locality = suburb || city;
+
+  // Building name — only if it comes from address fields, not POI classification
+  const buildingName = a.building || data.namedetails?.name || null;
+
+  // Prefer: BuildingName — StreetAddress, Suburb
+  // Fallback: StreetAddress, Suburb
+  // Last resort: display_name trimmed
+  let label;
+  if (buildingName && street)     label = `${buildingName} \u2014 ${street}${locality ? ', ' + locality : ''}`;
+  else if (buildingName)          label = `${buildingName}${locality ? ' \u2014 ' + locality : ''}`;
+  else if (street)                label = `${street}${locality ? ', ' + locality : ''}`;
+  else if (data.display_name)     label = data.display_name.split(',').slice(0, 3).join(',').trim().slice(0, 80);
+  else                            label = null;
+  return label;
 }
 
 // ── Phase transitions ─────────────────────────────────────────────────────

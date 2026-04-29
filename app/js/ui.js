@@ -90,10 +90,12 @@ export function setPipelineStatus(message, chipState = 'idle') {
  */
 export function setStage(stageId, stageState, statusText) {
   const el = document.getElementById(`stage-${stageId}`);
-  if (el) el.dataset.state = stageState;
+  if (el) {
+    el.dataset.state = stageState;
+    el.dataset.stage = stageState; // CSS uses [data-stage=...] for visual styling
+  }
   const btn = el?.querySelector('.stage-btn');
   if (btn) btn.disabled = (stageState === 'locked');
-  // Update button label text (stage-X-status is now inside the button)
   const statusEl = document.getElementById(`stage-${stageId}-status`);
   if (statusEl && statusText !== undefined) statusEl.textContent = statusText;
 }
