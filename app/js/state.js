@@ -80,6 +80,9 @@ export const state = {
   dgSpacing:         null,
   dgMinorDivisions:  null,
 
+  // ── Site location (Stage 1 output, consumed by Stage 2) ─────────────────
+  siteCenter: null,     // {lat, lng, label} — set when Locate Site confirms
+
   // ── UI ───────────────────────────────────────────────────────────────────
   feedbackTimer: null,
   alarmTime:     null,

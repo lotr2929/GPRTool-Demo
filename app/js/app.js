@@ -15,7 +15,7 @@
     // ── DESIGN WORLD (grids, north angle) — never mixes with Real World ────────
     import { initSiteSelection }    from './site-selection.js';
     import { initCADMapperImport, buildLayerPanel, parseCadmapperDXF } from './cadmapper-import.js';
-    import { initOSMImport } from './osm-import.js';
+    import { initOSMImport, openImportModal } from './osm-import.js';
     import { buildSiteTerrain, clearSiteTerrain, getSiteTerrainElevation, projectGroupOntoTerrain, initTerrainBVH } from './terrain.js';
     import { DesignGridManager }    from './design-grid.js';
     import {
@@ -78,7 +78,7 @@
     // Fetches OSM data for that location, saves .gpr with source:'cesium'.
     document.getElementById('importCesiumBtn')?.addEventListener('click', _importFromCesium);
 
-    // ── Extract Site Segment — Stage 2 ────────────────────────────────────
+    // ── Extract Site Segment — Stage 3 ────────────────────────────────────
     document.getElementById('extractSiteBtn')?.addEventListener('click', () => {
       setCesium2D();                        // switch Cesium to top-down view
       showThreeJSView();                    // raise Three.js canvas for rectangle picker
@@ -87,6 +87,17 @@
       setPipelineStatus('Draw site rectangle\u2026', 'busy');
       showFeedback('Drag to draw site rectangle \u2014 release to confirm', 0);
       // TODO: Rectangle picker implementation — next session
+    });
+
+    // ── Import Site Location — Stage 2 ────────────────────────────────────
+    document.getElementById('importSiteBtn')?.addEventListener('click', () => {
+      if (state.siteCenter) openImportModal();
+    });
+
+    // Unlock Stage 2 when Stage 1 (Locate Site) completes
+    window.addEventListener('site:located', ({ detail }) => {
+      setStage('locate', 'done',    detail.label ? `\u2713 ${detail.label.slice(0, 30)}` : '\u2713 Located');
+      setStage('import', 'pending', 'Click to import OSM context');
     });
 
     async function _importFromCesium() {
@@ -944,8 +955,10 @@
       resetCesiumView();
       showCesiumView();        // return to globe after clearing
       setPipelineStatus('', 'idle');
+      state.siteCenter = null;
       setStage('locate',  'pending', 'Set a location to begin');
-      setStage('extract', 'locked',  'Complete stage 1 first');
+      setStage('import',  'locked',  'Complete stage 1 first');
+      setStage('extract', 'locked',  'Complete stage 2 first');
       showFeedback('Site cleared');
     });
 
@@ -1652,7 +1665,8 @@
           buildBoundaryPanel(wgs84Bounds, false, !dxfFile ? _startCesiumBoundaryDraw : null);
 
           // ── Stage indicators ──────────────────────────────────────────
-          setStage('locate', 'done', `\u2713 ${siteName}`);
+          setStage('locate', 'done',  `\u2713 ${siteName}`);
+          setStage('import', 'done',  '\u2713 Imported');
           setStage('extract', 'pending', 'Switch to 2D and extract site');
           showFeedback('Site loaded \u2014 Extract Segment when ready');
         } else {

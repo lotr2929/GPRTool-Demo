@@ -19,7 +19,7 @@
 import { setRealWorldAnchor, utmToWGS84, wgs84ToScene, wgs84ToUTM } from './real-world.js';
 import { state } from './state.js';
 import { buildLayerPanel, appendLayerToPanel } from './cadmapper-import.js';
-import { startLocationPick, stopLocationPick, startIdentifyPick, stopIdentifyPick } from './cesium-viewer.js';
+import { startLocationPick, stopLocationPick, startIdentifyPick, stopIdentifyPick, getCesiumViewer } from './cesium-viewer.js';
 import { addTerrainToGPR, getActiveGPRBlob } from './gpr-file.js';
 import { writeBlobToHandle } from './local-folder.js';
 import { setPipelineStatus } from './ui.js';
@@ -48,6 +48,7 @@ const ROAD_WIDTHS = {
 // ── Module state ──────────────────────────────────────────────────────────
 let _callbacks = null;
 let THREE      = null;  // set from callbacks at init, used by all geometry builders
+let _openedFromStage2 = false; // true when Stage 2 button opens Phase B directly
 
 // ── Modal HTML ────────────────────────────────────────────────────────────
 // Two-phase top-bar overlay. Cesium 3D scene remains fully visible and
@@ -191,10 +192,11 @@ export function initOSMImport(callbacks) {
 }
 
 function openModal() {
+  _openedFromStage2 = false;
   document.getElementById('osm-overlay').style.display = 'block';
   _showPhaseA();
-  // Default mode on open: Locate Site (clicks set site centre).
   _setLocateMode();
+  _startHoverTooltip();
 }
 function closeModal() {
   document.getElementById('osm-overlay').style.display = 'none';
@@ -202,6 +204,7 @@ function closeModal() {
   stopIdentifyPick();
   _identifyMode = false;
   _renderIdentifyBtn();
+  _stopHoverTooltip();
 }
 
 // ── Locate ↔ Identify mode toggle ────────────────────────────────────────
@@ -210,10 +213,13 @@ let _identifyMode = false;
 function _locateCallback({ lat, lng }) {
   document.getElementById('osm-lat').value = lat.toFixed(7);
   document.getElementById('osm-lng').value = lng.toFixed(7);
-  setStatus('Location set \u2014 select radius and click Import.');
-  const hint = document.getElementById('osm-pick-hint-a');
-  if (hint) hint.textContent = `\u2713 ${lat.toFixed(5)}, ${lng.toFixed(5)} \u2014 click again to reposition`;
-  _showPhaseB();
+
+  // Use hover tooltip label if it matches the clicked point, else fall back to coords.
+  const label = _getLastHoverLabel(lat, lng) || `${lat.toFixed(5)}, ${lng.toFixed(5)}`;
+  state.siteCenter = { lat, lng, label };
+
+  closeModal(); // stops picks + removes tooltip
+  window.dispatchEvent(new CustomEvent('site:located', { detail: { lat, lng, label } }));
 }
 
 function _setLocateMode() {
@@ -291,6 +297,112 @@ async function _identifyAt(lat, lng) {
   }
 }
 
+// ── Hover tooltip — shows building name/address as cursor moves over globe ─
+// Tooltip follows mouse, shows coords immediately, then updates with
+// Nominatim label after 250 ms debounce. Freezes on click.
+// Uses Cesium's camera.pickEllipsoid to convert screen → lat/lng.
+
+function _startHoverTooltip() {
+  const cesiumEl = document.getElementById('cesium-container');
+  if (!cesiumEl) return;
+
+  // Create tooltip element
+  const tt = document.createElement('div');
+  tt.id = 'osm-hover-tooltip';
+  tt.style.cssText = 'position:fixed;display:none;pointer-events:none;z-index:1200;'
+    + 'background:var(--chrome-dark,#1e3d1e);color:#fff;font-size:11px;'
+    + 'padding:4px 10px;border-radius:4px;box-shadow:0 2px 8px rgba(0,0,0,0.45);'
+    + 'max-width:300px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;'
+    + 'font-family:var(--font,Outfit,sans-serif);';
+  document.body.appendChild(tt);
+
+  let _debounce = null;
+  let _abort    = null;
+
+  function onMove(e) {
+    tt.style.left = (e.clientX + 16) + 'px';
+    tt.style.top  = (e.clientY - 10) + 'px';
+
+    clearTimeout(_debounce);
+    _debounce = setTimeout(async () => {
+      const viewer = typeof getCesiumViewer === 'function' ? getCesiumViewer() : null;
+      const Cesium = window.Cesium;
+      if (!viewer || !Cesium) return;
+
+      const rect = cesiumEl.getBoundingClientRect();
+      const cart2 = new Cesium.Cartesian2(e.clientX - rect.left, e.clientY - rect.top);
+      const cartesian = viewer.camera.pickEllipsoid(cart2, viewer.scene.globe.ellipsoid);
+      if (!cartesian) { tt.style.display = 'none'; return; }
+
+      const carto = Cesium.Cartographic.fromCartesian(cartesian);
+      const lat   = Cesium.Math.toDegrees(carto.latitude);
+      const lng   = Cesium.Math.toDegrees(carto.longitude);
+
+      // Show coords immediately, then fetch label
+      tt.textContent    = `${lat.toFixed(5)}, ${lng.toFixed(5)}`;
+      tt.style.display  = 'block';
+      tt._lastLat = lat; tt._lastLng = lng; tt._lastLabel = null;
+
+      if (_abort) _abort.abort();
+      _abort = new AbortController();
+      try {
+        const url  = `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}`
+          + `&format=json&zoom=18&addressdetails=1&namedetails=1`;
+        const res  = await fetch(url, { signal: _abort.signal });
+        if (!res.ok) return;
+        const data = await res.json();
+        const lbl  = _formatNominatimLabel(data);
+        tt.textContent  = lbl;
+        tt._lastLabel   = lbl;
+      } catch { /* aborted or network — keep coords */ }
+    }, 250);
+  }
+
+  function onLeave() {
+    clearTimeout(_debounce);
+    tt.style.display = 'none';
+  }
+
+  cesiumEl.addEventListener('pointermove', onMove);
+  cesiumEl.addEventListener('pointerleave', onLeave);
+  tt._onMove        = onMove;
+  tt._onLeave       = onLeave;
+  tt._cesiumEl      = cesiumEl;
+}
+
+function _stopHoverTooltip() {
+  const tt = document.getElementById('osm-hover-tooltip');
+  if (!tt) return;
+  if (tt._cesiumEl) {
+    tt._cesiumEl.removeEventListener('pointermove', tt._onMove);
+    tt._cesiumEl.removeEventListener('pointerleave', tt._onLeave);
+  }
+  tt.remove();
+}
+
+function _getLastHoverLabel(lat, lng) {
+  const tt = document.getElementById('osm-hover-tooltip');
+  if (!tt || !tt._lastLabel) return null;
+  // Only use label if it was fetched within ~0.001 deg of the clicked point
+  if (Math.abs((tt._lastLat || 0) - lat) > 0.001) return null;
+  if (Math.abs((tt._lastLng || 0) - lng) > 0.001) return null;
+  return tt._lastLabel;
+}
+
+// Format a Nominatim reverse-geocode response into a short human-readable label.
+function _formatNominatimLabel(data) {
+  if (!data || data.error) return null;
+  const a    = data.address || {};
+  const name = data.namedetails?.name || a.building_name || a.amenity
+    || a.shop || a.tourism || a.historic || a.office || null;
+  const street = [a.house_number, a.road].filter(Boolean).join(' ');
+  const city   = a.city || a.town || a.suburb || a.village || '';
+  if (name && street) return `${name} \u2014 ${street}${city ? ', ' + city : ''}`;
+  if (name)           return `${name}${city ? ' \u2014 ' + city : ''}`;
+  if (street)         return `${street}${city ? ', ' + city : ''}`;
+  return (data.display_name || '').slice(0, 80) || null;
+}
+
 // ── Phase transitions ─────────────────────────────────────────────────────
 // Phase A's lat/lng inputs (#osm-lat, #osm-lng) remain the canonical source —
 // Phase B's #osm-coords-display is a read-only mirror, refreshed on every
@@ -307,7 +419,25 @@ function _showPhaseB() {
 }
 
 function _backToPhaseA() {
+  // If opened directly from Stage 2 panel button, Back = close (Stage 1 already done).
+  if (_openedFromStage2) { closeModal(); return; }
   _showPhaseA();
+}
+
+// ── openImportModal — called by Stage 2 button in the left panel ──────────
+// Opens Phase B directly using the location already set in Stage 1.
+export function openImportModal() {
+  if (!state.siteCenter) return; // Stage 1 not complete
+  const { lat, lng, label } = state.siteCenter;
+  document.getElementById('osm-lat').value = lat.toFixed(7);
+  document.getElementById('osm-lng').value = lng.toFixed(7);
+  _openedFromStage2 = true;
+  document.getElementById('osm-overlay').style.display = 'block';
+  _showPhaseB();
+  const display = document.getElementById('osm-coords-display');
+  if (display) display.textContent = label
+    ? `${label}  \u2022  ${lat.toFixed(5)}, ${lng.toFixed(5)}`
+    : `${lat.toFixed(6)}, ${lng.toFixed(6)}`;
 }
 
 function _updateCoordsDisplay() {
@@ -338,9 +468,10 @@ async function searchAddress() {
     document.getElementById('osm-lat').value = lat.toFixed(7);
     document.getElementById('osm-lng').value = lng.toFixed(7);
     const { flyToSite } = await import('./cesium-viewer.js');
-    // alt=800 (above ground) — flyToSite samples 3D-tile surface, no longer
-    // ellipsoid-relative. precise/area distinction kept only in status text.
     await flyToSite(lat, lng, 800);
+    const label = display_name.slice(0, 70);
+    state.siteCenter = { lat, lng, label };
+    window.dispatchEvent(new CustomEvent('site:located', { detail: { lat, lng, label } }));
     setStatus(`${precise ? '\u2713 Building found' : '\u26a0 Area result'} \u2014 ${display_name.slice(0, 55)}\u2026`);
     _showPhaseB();
   } catch (err) {
@@ -910,6 +1041,11 @@ async function _setCached(key, data) {
 }
 
 // ── Run import ────────────────────────────────────────────────────────────
+// Order of operations (all within one async function called from a click):
+//   1. Synchronous validation + anchor setup  (no await yet)
+//   2. showSaveFilePicker               ← FIRST await — captures user gesture
+//   3. _runTerrainWorker                ← fire-and-forget (parallel)
+//   4. Overpass fetch → buildLayerGroups → onLayersLoaded (flip Cesium→Three.js)
 async function runImport() {
   const lat    = parseFloat(document.getElementById('osm-lat').value);
   const lng    = parseFloat(document.getElementById('osm-lng').value);
@@ -919,49 +1055,56 @@ async function runImport() {
     setStatus('Please enter latitude and longitude.', true); return;
   }
   if (lat < -90 || lat > 90 || lng < -180 || lng > 180) {
-    setStatus('Invalid coordinates — latitude must be -90 to 90, longitude -180 to 180.', true); return;
+    setStatus('Invalid coordinates.', true); return;
   }
 
-  // Derive UTM zone from longitude and convert to standard UTM
+  // ── Synchronous setup — no await before showSaveFilePicker ────────────
   const zone = Math.floor((lng + 180) / 6) + 1;
   const { easting, northing } = wgs84ToUTM(lat, lng, zone);
-  // Use standard UTM northing (positive for both hemispheres) — real-world.js handles conversion
+  setRealWorldAnchor(zone, easting, northing);
+  const bbox      = latLngToBbox(lat, lng, radius);
+  const cacheKey  = _bboxKey(bbox, radius);
+  const addressVal = state.siteCenter?.label
+    || document.getElementById('osm-address')?.value?.trim()
+    || null;
+  const safeName  = (addressVal || 'site')
+    .replace(/[^\w\s\-]/g, '').replace(/\s+/g, '_').slice(0, 40);
 
+  // ── 1. showSaveFilePicker — FIRST await, captures user gesture ─────────
+  if (window.showSaveFilePicker) {
+    try {
+      const handle = await showSaveFilePicker({
+        suggestedName: safeName + '.gpr',
+        types: [{ description: 'GPR Project File', accept: { 'application/octet-stream': ['.gpr'] } }],
+        excludeAcceptAllOption: false,
+      });
+      state.activeFileHandle = handle;
+    } catch { /* user cancelled — continue without file handle */ }
+  }
+
+  // ── 2. Terrain worker — start immediately (non-blocking) ──────────────
+  _runTerrainWorker(bbox, zone);
+
+  // ── 3. Overpass fetch → geometry → flip to Three.js ───────────────────
   const btn = document.getElementById('osm-import-btn');
   btn.disabled = true; btn.style.opacity = '0.5';
-
   try {
-    // Set Real World anchor
-    setRealWorldAnchor(zone, easting, northing);
-
-    // Compute WGS84 bounding box directly from lat/lng + radius
-    const bbox    = latLngToBbox(lat, lng, radius);
-    const cacheKey = _bboxKey(bbox, radius);
-
-    // Check browser cache first — avoids Overpass entirely for known areas
     let osmData = await _getCached(cacheKey);
     if (osmData) {
       setStatus('Loaded from cache \u2014 building geometry\u2026');
     } else {
       setStatus('Fetching OSM data\u2026');
       osmData = await fetchOverpass(buildOverpassQuery(bbox));
-      await _setCached(cacheKey, osmData); // save for next time
+      await _setCached(cacheKey, osmData);
     }
     setStatus('Building geometry\u2026');
     const layerGroups = buildLayerGroups(osmData, THREE);
-
-    if (!Object.keys(layerGroups).length) {
-      throw new Error('No data returned — check coordinates or try a larger radius');
-    }
+    if (!Object.keys(layerGroups).length)
+      throw new Error('No data returned \u2014 check coordinates or try a larger radius');
 
     closeModal();
-    const addressVal  = document.getElementById('osm-address')?.value?.trim();
-    const osmGeoJSON  = osmToGeoJSON(osmData);
-    _callbacks.onLayersLoaded(layerGroups, null, addressVal || null, osmGeoJSON);
-
-    // ── Terrain + contours via Web Worker (non-blocking) ──────────────────
-    _runTerrainWorker(bbox, zone);
-
+    const osmGeoJSON = osmToGeoJSON(osmData);
+    _callbacks.onLayersLoaded(layerGroups, null, addressVal, osmGeoJSON);
   } catch (err) {
     setStatus('Import failed: ' + err.message, true);
     console.error('[OSM import]', err);
@@ -978,71 +1121,75 @@ function _runTerrainWorker(bbox, zone) {
     return;
   }
   const { getRealWorldAnchor } = _callbacks;
-  const anchor = typeof getRealWorldAnchor === 'function' ? getRealWorldAnchor() : null;
+  const anchor  = typeof getRealWorldAnchor === 'function' ? getRealWorldAnchor() : null;
   const anchorX = anchor?.easting  ?? 0;
   const anchorY = anchor?.northing ?? 0;
 
   state.terrainStatus = 'fetching';
   window.dispatchEvent(new CustomEvent('terrain:status', { detail: { status: 'fetching' } }));
 
-  const worker = new Worker(new URL('./terrain-worker.js', import.meta.url), { type: 'module' });
+  const worker    = new Worker(new URL('./terrain-worker.js', import.meta.url), { type: 'module' });
   const intervalM = 5;
+  const startMs   = Date.now();
   worker.postMessage({ bbox, zoom: 14, intervalM, zone, anchorX, anchorY });
+
+  // Elapsed timer — ticks every second while tiles are downloading
+  let timerInterval = setInterval(() => {
+    if (state.terrainStatus === 'fetching') {
+      const s = Math.round((Date.now() - startMs) / 1000);
+      setPipelineStatus(`Terrain: downloading\u2026 ${s}s`, 'busy');
+    }
+  }, 1000);
 
   worker.onmessage = async ({ data: msg }) => {
     if (msg.type === 'progress') {
-      // Structured per-stage progress: {stage:'tiles'|'contours', done, total}
       if (msg.stage && typeof msg.done === 'number' && typeof msg.total === 'number') {
-        const pct = Math.round((msg.done / Math.max(1, msg.total)) * 100);
-        const label = msg.stage === 'tiles'
-          ? `Terrain: tiles ${msg.done}/${msg.total} (${pct}%)`
-          : `Terrain: contours ${pct}%`;
+        const pct     = Math.round((msg.done / Math.max(1, msg.total)) * 100);
+        const elapsed = Math.round((Date.now() - startMs) / 1000);
+        const label   = msg.stage === 'tiles'
+          ? `Terrain: tiles ${msg.done}/${msg.total} (${pct}%) \u2014 ${elapsed}s`
+          : `Terrain: contours ${pct}% \u2014 ${elapsed}s`;
         setPipelineStatus(label, 'busy');
         window.dispatchEvent(new CustomEvent('terrain:progress',
           { detail: { stage: msg.stage, done: msg.done, total: msg.total, pct } }));
       } else {
-        // Legacy progress with msg only (kept for safety)
         console.log('[terrain]', msg.msg);
       }
     } else if (msg.type === 'done') {
-      const payload = {
-        source: 'aws-terrarium',
-        zoom: 14,
-        intervalM,
-        anchorX, anchorY,
+      clearInterval(timerInterval);
+      const totalSec = ((Date.now() - startMs) / 1000).toFixed(1);
+      const payload  = {
+        source: 'aws-terrarium', zoom: 14, intervalM, anchorX, anchorY,
         points: msg.terrainPoints,
         contourSegments: Array.from(msg.contourSegments),
       };
       _buildTerrainFromWorker(msg.terrainPoints, msg.contourSegments).then(async () => {
-      state.terrainStatus = 'ready';
-      state.terrainPayload = payload;
-      window.dispatchEvent(new CustomEvent('terrain:status', { detail: { status: 'ready' } }));
-      worker.terminate();
-
-      // Persist into the active GPR; if a local file handle exists from a prior
-      // Save, also re-write the file on disk so the saved .gpr gains terrain.
-      try {
-        await addTerrainToGPR(payload);
-        if (state.activeFileHandle) {
-          try {
-            const blob = await getActiveGPRBlob();
-            await writeBlobToHandle(state.activeFileHandle, blob);
-            setPipelineStatus('\u2713 Terrain attached', 'done');
-          } catch (e) {
-            console.warn('[terrain] re-write of local file failed:', e);
-            setPipelineStatus('Terrain saved (cloud only)', 'done');
+        state.terrainStatus = 'ready';
+        state.terrainPayload = payload;
+        window.dispatchEvent(new CustomEvent('terrain:status', { detail: { status: 'ready' } }));
+        worker.terminate();
+        try {
+          await addTerrainToGPR(payload);
+          if (state.activeFileHandle) {
+            try {
+              const blob = await getActiveGPRBlob();
+              await writeBlobToHandle(state.activeFileHandle, blob);
+              setPipelineStatus(`\u2713 Terrain attached \u2014 ${totalSec}s`, 'done');
+            } catch (e) {
+              console.warn('[terrain] re-write of local file failed:', e);
+              setPipelineStatus(`Terrain saved (cloud only) \u2014 ${totalSec}s`, 'done');
+            }
+          } else {
+            setPipelineStatus(`\u2713 Terrain ready \u2014 ${totalSec}s`, 'done');
           }
-        } else {
-          setPipelineStatus('\u2713 Terrain ready', 'done');
+        } catch (e) {
+          console.warn('[terrain] persist skipped:', e.message);
+          setPipelineStatus(`\u2713 Terrain ready \u2014 ${totalSec}s`, 'done');
         }
-      } catch (e) {
-        console.warn('[terrain] persist skipped:', e.message);
-        setPipelineStatus('\u2713 Terrain ready', 'done');
-      }
-      // Fade the pill back to a neutral state after 3s
-      setTimeout(() => setPipelineStatus('Ready', 'idle'), 3000);
+        setTimeout(() => setPipelineStatus('Ready', 'idle'), 3000);
       });
     } else if (msg.type === 'error') {
+      clearInterval(timerInterval);
       console.warn('[terrain worker]', msg.message);
       state.terrainStatus = 'error';
       window.dispatchEvent(new CustomEvent('terrain:status', { detail: { status: 'error', message: msg.message } }));
@@ -1052,6 +1199,7 @@ function _runTerrainWorker(bbox, zone) {
     }
   };
   worker.onerror = e => {
+    clearInterval(timerInterval);
     console.warn('[terrain worker error]', e);
     state.terrainStatus = 'error';
     window.dispatchEvent(new CustomEvent('terrain:status', { detail: { status: 'error', message: e.message } }));
