@@ -1252,7 +1252,11 @@ async function _buildTerrainFromWorker(msg) {
   }
 
   // ── Phase 2: vertex buffer ────────────────────────────────────────────
-  // Use actual scene coordinates from each point; use grid index for connectivity
+  // Normalise elevation: subtract the center-point elevation so the terrain
+  // sits at Y≈0 (ground level), matching the buildings in the Three.js scene.
+  const centerPt = ptAt(Math.floor(gridHeight / 2), Math.floor(gridWidth / 2));
+  const refEle   = centerPt?.ele ?? 0;
+
   const verts = [];
   const idxMap = new Map(); // gridIndex → vertexIndex
   let vi = 0;
@@ -1260,7 +1264,7 @@ async function _buildTerrainFromWorker(msg) {
     for (let gix = 0; gix < gridWidth; gix++) {
       const pt = ptAt(giy, gix);
       if (!pt) continue;
-      verts.push(pt.x, pt.ele, -pt.y); // Three.js: x=east, y=ele, z=-north
+      verts.push(pt.x, pt.ele - refEle, -pt.y); // normalised elevation
       idxMap.set(giy * gridWidth + gix, vi++);
     }
   }
@@ -1303,8 +1307,13 @@ async function _buildTerrainFromWorker(msg) {
   if (contourSegments?.length >= 6) {
     const vBuf = new Float32Array(contourSegments.length);
     for (let i = 0; i < contourSegments.length; i += 6) {
-      vBuf[i]   = contourSegments[i];   vBuf[i+1] = contourSegments[i+2]; vBuf[i+2] = -contourSegments[i+1];
-      vBuf[i+3] = contourSegments[i+3]; vBuf[i+4] = contourSegments[i+5]; vBuf[i+5] = -contourSegments[i+4];
+      // [x0,y0,ele, x1,y1,ele] → Three.js [x, ele-ref, -y] for each endpoint
+      vBuf[i]   = contourSegments[i];             // x0
+      vBuf[i+1] = contourSegments[i+2] - refEle; // normalised ele0
+      vBuf[i+2] = -contourSegments[i+1];         // -y0
+      vBuf[i+3] = contourSegments[i+3];           // x1
+      vBuf[i+4] = contourSegments[i+5] - refEle; // normalised ele1
+      vBuf[i+5] = -contourSegments[i+4];         // -y1
     }
     await yieldFrame();
     const geom = new T.BufferGeometry();

@@ -71,69 +71,64 @@ async function fetchTile(tx, ty, z, anchorX, anchorY) {
   } catch { return null; }
 }
 
-// ── Marching squares contour generation ──────────────────────────────────
-async function buildContours(points, intervalM) {
+// ── Marching squares contour generation (pixel-index grid) ───────────────
+// Uses the same tile-column-major index mapping as _buildTerrainFromWorker
+// so no floating-point coordinate matching is needed.
+async function buildContours(points, gridWidth, gridHeight, tilesX, tilesY, intervalM) {
   if (!points.length) return [];
+  const TILE_GRID = Math.round(gridWidth / tilesX);
 
-  // Build XY axis arrays + integer-indexed grid (typed array, no string keys).
-  // The Map-of-strings approach was ~10–30× slower because every cell required
-  // `${x},${y}` allocation and a hash lookup. Same elevations stored, same
-  // algorithm, same output -- just integer offsets instead of string keys.
-  const xs = [...new Set(points.map(p => Math.round(p.x * 10) / 10))].sort((a,b)=>a-b);
-  const ys = [...new Set(points.map(p => Math.round(p.y * 10) / 10))].sort((a,b)=>a-b);
-  const xCount = xs.length, yCount = ys.length;
-
-  // Reverse-lookup: coord -> index. Built once.
-  const xIndex = new Map();  for (let i = 0; i < xCount; i++) xIndex.set(xs[i], i);
-  const yIndex = new Map();  for (let i = 0; i < yCount; i++) yIndex.set(ys[i], i);
-
-  const grid = new Float32Array(xCount * yCount);  // elevations
-  const has  = new Uint8Array(xCount * yCount);    // 1 = data present (0 m elevation is valid, so we need a separate mask)
-
+  // Build elevation + xy grids using pixel indices
+  const N     = gridWidth * gridHeight;
+  const elevs = new Float32Array(N);
+  const pxs   = new Float32Array(N); // scene x (easting offset)
+  const pys   = new Float32Array(N); // scene y (northing offset)
+  const has   = new Uint8Array(N);
   let minE = Infinity, maxE = -Infinity;
-  for (const p of points) {
-    const ix = xIndex.get(Math.round(p.x * 10) / 10);
-    const iy = yIndex.get(Math.round(p.y * 10) / 10);
-    if (ix === undefined || iy === undefined) continue;
-    const k = iy * xCount + ix;
-    grid[k] = p.ele;
-    has[k]  = 1;
-    if (p.ele < minE) minE = p.ele;
-    if (p.ele > maxE) maxE = p.ele;
+
+  for (let giy = 0; giy < gridHeight; giy++) {
+    for (let gix = 0; gix < gridWidth; gix++) {
+      const tileIy  = Math.floor(giy / TILE_GRID);
+      const tileIx  = Math.floor(gix / TILE_GRID);
+      const tileIdx = tileIx * tilesY + tileIy;
+      const ptIdx   = tileIdx * TILE_GRID * TILE_GRID + (giy % TILE_GRID) * TILE_GRID + (gix % TILE_GRID);
+      const pt = ptIdx < points.length ? points[ptIdx] : null;
+      if (!pt) continue;
+      const k = giy * gridWidth + gix;
+      elevs[k] = pt.ele; pxs[k] = pt.x; pys[k] = pt.y; has[k] = 1;
+      if (pt.ele < minE) minE = pt.ele;
+      if (pt.ele > maxE) maxE = pt.ele;
+    }
   }
+  if (!isFinite(minE)) return [];
 
   minE = Math.floor(minE / intervalM) * intervalM;
   maxE = Math.ceil (maxE / intervalM) * intervalM;
-  const segments = []; // flat array: [x0,y0,ele, x1,y1,ele, ...]
+  const segments = []; // flat: [x0,y0,ele, x1,y1,ele, ...]
 
   const totalLevels = Math.max(1, Math.round((maxE - minE) / intervalM) + 1);
   let levelIdx = 0;
   self.postMessage({ type: 'progress', stage: 'contours', done: 0, total: totalLevels });
 
   for (let elev = minE; elev <= maxE; elev += intervalM) {
-    for (let iy = 0; iy < yCount - 1; iy++) {
-      const rowA = iy * xCount;
-      const rowB = (iy + 1) * xCount;
-      for (let ix = 0; ix < xCount - 1; ix++) {
-        const kA = rowA + ix, kB = rowB + ix;
-        // All four corners must have data
-        if (!has[kA] || !has[kA + 1] || !has[kB] || !has[kB + 1]) continue;
-        const v00 = grid[kA];        // (ix,   iy)
-        const v10 = grid[kA + 1];    // (ix+1, iy)
-        const v01 = grid[kB];        // (ix,   iy+1)
-        const v11 = grid[kB + 1];    // (ix+1, iy+1)
+    for (let giy = 0; giy < gridHeight - 1; giy++) {
+      const rowA = giy * gridWidth, rowB = (giy + 1) * gridWidth;
+      for (let gix = 0; gix < gridWidth - 1; gix++) {
+        const kA = rowA + gix, kB = rowB + gix;
+        if (!has[kA] || !has[kA+1] || !has[kB] || !has[kB+1]) continue;
+        const v00 = elevs[kA], v10 = elevs[kA+1], v01 = elevs[kB], v11 = elevs[kB+1];
+        if ((v00<elev)===(v10<elev) && (v10<elev)===(v01<elev) && (v01<elev)===(v11<elev)) continue;
         const lerp = (a,b,va,vb) => a + (b-a)*(elev-va)/(vb-va);
         const pts = [];
-        if ((v00<elev)!==(v10<elev)) pts.push([lerp(xs[ix],xs[ix+1],v00,v10), ys[iy]]);
-        if ((v10<elev)!==(v11<elev)) pts.push([xs[ix+1], lerp(ys[iy],ys[iy+1],v10,v11)]);
-        if ((v01<elev)!==(v11<elev)) pts.push([lerp(xs[ix],xs[ix+1],v01,v11), ys[iy+1]]);
-        if ((v00<elev)!==(v01<elev)) pts.push([xs[ix], lerp(ys[iy],ys[iy+1],v00,v01)]);
+        if ((v00<elev)!==(v10<elev)) pts.push([lerp(pxs[kA],pxs[kA+1],v00,v10), lerp(pys[kA],pys[kA+1],v00,v10)]);
+        if ((v10<elev)!==(v11<elev)) pts.push([lerp(pxs[kA+1],pxs[kB+1],v10,v11), lerp(pys[kA+1],pys[kB+1],v10,v11)]);
+        if ((v01<elev)!==(v11<elev)) pts.push([lerp(pxs[kB],pxs[kB+1],v01,v11), lerp(pys[kB],pys[kB+1],v01,v11)]);
+        if ((v00<elev)!==(v01<elev)) pts.push([lerp(pxs[kA],pxs[kB],v00,v01), lerp(pys[kA],pys[kB],v00,v01)]);
         if (pts.length >= 2) segments.push(pts[0][0], pts[0][1], elev, pts[1][0], pts[1][1], elev);
       }
     }
     levelIdx++;
     self.postMessage({ type: 'progress', stage: 'contours', done: levelIdx, total: totalLevels });
-    // Yield event loop so progress messages flush in real time
     await new Promise(r => setTimeout(r, 0));
   }
   return segments;
@@ -180,13 +175,12 @@ self.onmessage = async ({ data }) => {
       return;
     }
 
-    const contourSegments = await buildContours(points, intervalM);
-
-    // Grid dimensions for index-based mesh building in the main thread.
-    // fetchTile uses step=4 on 256×256 tiles → 64 grid points per tile side.
-    const TILE_GRID = 64; // 256 / 4
+    // Grid dimensions: fetchTile uses step=4 on 256×256 tiles → 64 grid pts per tile side.
+    const TILE_GRID  = 64; // 256 / step(4)
     const gridWidth  = txCount * TILE_GRID;
     const gridHeight = tyCount * TILE_GRID;
+
+    const contourSegments = await buildContours(points, gridWidth, gridHeight, txCount, tyCount, intervalM);
 
     self.postMessage({ type: 'done', terrainPoints: points, contourSegments,
                        gridWidth, gridHeight, tilesX: txCount, tilesY: tyCount });
