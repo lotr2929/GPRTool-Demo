@@ -81,7 +81,8 @@ export const state = {
   dgMinorDivisions:  null,
 
   // ── Site location (Stage 1 output, consumed by Stage 2) ─────────────────
-  siteCenter: null,     // {lat, lng, label} — set when Locate Site confirms
+  siteCenter:  null,     // {lat, lng, label} — set when Locate Site confirms
+  osmGeoJSON:  null,     // WGS84 GeoJSON FeatureCollection from last OSM import
 
   // ── UI ───────────────────────────────────────────────────────────────────
   feedbackTimer: null,

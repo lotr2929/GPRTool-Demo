@@ -732,7 +732,7 @@ function wayToLatLngs(el) {
 
 
 // ── Generate contour lines from terrain point cloud ───────────────────────
-function buildContourLines(points, intervalM, THREE) {
+export function buildContourLines(points, intervalM, THREE) {
   if (!points?.length) return null;
 
   // Build XZ grid of elevations
@@ -1145,6 +1145,7 @@ async function runImport() {
     // Re-read label — may have been updated by showSaveFilePicker filename
     const finalLabel = state.siteCenter?.label || addressVal;
     const osmGeoJSON = osmToGeoJSON(osmData);
+    state.osmGeoJSON = osmGeoJSON;
     _callbacks.onLayersLoaded(layerGroups, null, finalLabel, osmGeoJSON);
   } catch (err) {
     setStatus('Import failed: ' + err.message, true);
