@@ -1,25 +1,24 @@
 # GPRTool -- Project Brief
 
 ## What this is
-GPRTool is a web-based application for ground penetration radar (GPR) data visualization and analysis, using HTML/CSS/JS with Three.js for 3D rendering. It's deployed on Vercel/GitHub with no npm dependencies. The project includes a LAI (Leaf Area Index) processing pipeline in Python.
+GPRTool is a web-based 3D visualisation and analysis application, likely for Green Plot Ratio calculations, developed by Boon Ong/Curtin University. It primarily uses HTML/CSS/JavaScript with Three.js for 3D rendering, and ES modules for structure. There are archived Python backend components. Deployment is implied to be web-based, possibly via Vercel.
 
 ## Deployment
 - Live URL: [FILL IN]
 - Vercel project: [FILL IN]
 - Supabase project: [FILL IN]
-- Key env vars: [FILL IN e.g. SUPABASE_URL, SUPABASE_KEY, API keys]
+- Key env vars: [FILL IN e.g. MOBIUS_SUPABASE_URL, MOBIUS_SUPABASE_PUBLISHABLE_KEY, API keys]
 
 ## Current focus
-The project is actively working on extracting code from index.html into modular JS files in app/js/ while maintaining compatibility with Chrome (using Edge for development).
+The main active task is refactoring the `index.html` file. Existing code sections are being systematically extracted into new, dedicated ES module JavaScript files within the `app/js/` directory, aiming to reduce `index.html` to a minimal shell.
 
 ## Key constraints
-- No Python in app/ directory (LAI pipeline lives in lai/)
-- Icons must be inline SVG, never PNG
-- Third-party libraries in app/js/lib/ must not be edited
-- "Touch it, extract it" rule: extract code from index.html to separate files
-- Chrome issues require development in Edge
-- No global variables; explicit dependencies only
-```
+- North direction is consistently mapped to the negative Z-axis in Three.js.
+- Microsoft Edge is the mandatory development browser due to Chrome compatibility issues.
+- The "Touch it, extract it" rule: any code touched in `index.html` must be moved to a separate ES module in `app/js/`.
+- Code must be robust, modular, and maintainable; short-term patches are forbidden.
+- Third-party libraries in the `lib/` folder must not be modified.
+- Chromium-only browser APIs are permitted.
 
 ## Off-limits
 - [FILL IN: data or files that must never be sent to external APIs or logged]

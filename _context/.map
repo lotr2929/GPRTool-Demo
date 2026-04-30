@@ -1,6 +1,6 @@
 # Project Map: GPRTool
-Generated: Tue, 14 Apr 2026, 11:37 am  (0.1s)
-Files:     98
+Generated: Thu, 30 Apr 2026, 2:46 pm  (0.3s)
+Files:     146
 
 [dir]  _archive/
   [dir]  backend/
@@ -21,18 +21,54 @@ Files:     98
   [file] start.bat.old (1.2 KB)
   [file] test_site_scratch.geojson (857 B)
 [dir]  _context/
-  [file] brief_benchmark_compass3d.md (8.9 KB)  -- Brief Benchmark — NPoint Compass 3D Back-Face Bug
+  [file] brief_benchmark_compass3d.md (8.8 KB)  -- Brief Benchmark — NPoint Compass 3D Back-Face Bug
+  [file] Charter of the Green Plot Rati.docx (13.9 KB)
+  [file] GPRI Charter.pdf (61.8 KB)
+  [file] GPRTool_GamePlan.docx (33.9 KB)
 [dir]  _dev/
+  [dir]  domains/
+    [file] compass.md (11.2 KB)  -- Compass (NPoint)
+    [file] DOMAIN_TEMPLATE.md (1.4 KB)  -- [SYSTEM NAME]
+  [file] _architecture.md (8.5 KB)  -- GPRTool Architecture — Session Reference
   [file] _design.md (47.5 KB)  -- GPRTool — Design & Development Guide
   [file] _dev_guide.md (10.5 KB)  -- GPRTool — Developer Guide
-  [file] _journal.md (13.5 KB)  -- GPRTool Development Journal
+  [file] _journal.md (10.0 KB)  -- GPRTool Session Log — Sat 18 Apr 2026
   [file] _map.md (9.0 KB)  -- GPRTool — Repository Map
   [file] _session.md (3.7 KB)  -- GPRTool — Session Status
+  [file] poll_vercel.ps1 (3.0 KB)  -- poll_vercel.ps1 - called by deploy.bat after git push
   [file] ref_.brief (2.2 KB)
   [file] ref_.funcs (4.7 KB)
   [file] ref_.slim (1.5 KB)
   [file] repomix-output.xml (328.6 KB)
   [file] Three.js Grid Orientation.md (2.1 KB)
+  [file] vision.md (8.3 KB)  -- GPRTool Vision & Long-Range Architecture
+[dir]  _projects/
+  [dir]  30 Beaufort Street, WA 6000/
+    [file] 30 Beaufort Street, Perth, WA 6000.zip (351.6 KB)
+    [file] CADMapper-30 Beaufort Street.dxf (1.4 MB)
+  [dir]  30_beaufort_street(old)/
+    [file] 30_Beaufort_Street_GPR_Recommendations.docx (32.8 KB)
+    [file] 30_beaufort_street_parcel.geojson (1.5 KB)
+    [file] 30_Beaufort_Street_Site_Analysis.docx (21.6 KB)
+    [file] GPR Recommendations #1.pdf (138.6 KB)
+    [file] GPR Recommendations #2.pdf (128.7 KB)
+    [file] GPR Recommendations #3.pdf (148.6 KB)
+    [file] GPR Recommendations #4.pdf (128.3 KB)
+    [file] GPR Recommendations #5.pdf (93.5 KB)
+    [file] GPR Recommendations #6.pdf (148.7 KB)
+  [dir]  test_files/
+    [file] test_8storey_site.obj (2.4 KB)
+    [file] test_building_import.dxf (9.5 KB)
+    [file] test_cube.dxf (1.8 KB)
+    [file] test_cube.obj (790 B)
+    [file] test_site_contours.geojson (3.3 KB)
+    [file] test-tower-clean.obj (747 B)
+    [file] test-tower.obj (2.8 KB)
+[dir]  api/
+  [file] geocode.js (1.8 KB)
+  [file] maps-key.js (457 B)
+  [file] overpass.js (2.2 KB)
+  [file] projects.js (6.7 KB)
 [dir]  app/
   [dir]  images/
     [dir]  Backup Images/
@@ -41,18 +77,54 @@ Files:     98
       [file] gpr-logo4.png (419.4 KB)
     [file] gpr-logo.png (829.4 KB)
   [dir]  js/
-    [file] north-point-2d.js (26.3 KB)
-    [file] north-point-3d.js (11.3 KB)
-    [file] OrbitControls.js (4.8 KB)  -- Simplified, stable OrbitControls
+    [file] app.js (82.3 KB)  -- REAL WORLD (coordinates, geography) — import only from real-world.js ──
+    [file] cadmapper-import.js (28.3 KB)
+    [file] cesium-viewer.js (23.3 KB)
+    [file] design-grid.js (20.0 KB)
+    [file] geo.js (5.8 KB)
+    [file] gpr-file.js (10.4 KB)
+    [file] grid.js (8.8 KB)
+    [file] local-folder.js (4.1 KB)
+    [file] model.js (3.5 KB)
+    [file] north-point-2d.js (26.1 KB)
+    [file] north-point-3d.js (15.6 KB)
+    [file] OrbitControls.js (6.2 KB)  -- Simplified, stable OrbitControls
+    [file] osm-import.js (59.4 KB)
+    [file] plants.js (24.1 KB)
+    [file] projects.js (25.9 KB)
+    [file] real-world.js (11.5 KB)
+    [file] site-selection.js (17.3 KB)
+    [file] site.js (13.5 KB)
+    [file] state.js (4.4 KB)
+    [file] surfaces.js (12.1 KB)
+    [file] terrain-worker.js (8.6 KB)
+    [file] terrain.js (10.3 KB)
     [file] three.module.js (1.2 MB)
+    [file] ui.js (6.1 KB)
+    [file] viewport.js (11.8 KB)
   [dir]  textures/
     [file] plywood.webp (342.5 KB)
-  [file] body.html (20.9 KB)  -- Main Content Area
+  [file] body.html (22.7 KB)  -- Main Content Area
+  [file] cesium-spike.html (7.3 KB)
   [file] favicon.ico (11.9 KB)
-  [file] header.html (4.8 KB)  -- Undo / Redo arrows — far left, always visible
-  [file] index.html (124.9 KB)
+  [file] header.html (4.9 KB)  -- Undo / Redo arrows — far left, always visible
+  [file] index.html (2.8 KB)
   [file] plants_free.json (26.8 KB)
-  [file] styles.css (25.6 KB)
+  [file] styles.css (34.9 KB)
+[dir]  GPRTool Projects/
+  [file] -3386580_15121516.gpr
+  [file] 160 Central, Perth.gpr
+  [file] 3_Upper_Pickering_St_Singapore_058289.gpr
+  [file] OSM - -Seagram Building, Manhattan.gpr
+  [file] OSM - China Square,Tanjong Pagar, Singapore.gpr
+  [file] OSM - Perth State Library, Perth.gpr
+  [file] OSM — 30 Beaufort Street, Perth.gpr (123.6 KB)
+  [file] OSM — 30 Beaufort Street.gpr
+  [file] OSM — China Square, Tanjong Pagar, Outram.gpr (169.6 KB)
+  [file] OSM — Crown, Sydney.gpr (133.5 KB)
+  [file] OSM — Grosvenor Place, Sydney.gpr
+  [file] OSM — Raffles City, Singapore.gpr (150.5 KB)
+  [file] Sherwood Court, Perth.gpr
 [dir]  lai/
   [dir]  accdb_export/
     [file] accdb_schema.txt (384 B)
@@ -93,27 +165,9 @@ Files:     98
   [file] Material Library.csv (25 B)
   [file] merge_singapore_lai.py (7.2 KB)
   [file] Tan, Sia - 2009 - LAI of tropical plants - a Guidebook on its use in the calculation of GPR.pdf (5.3 MB)
-[dir]  projects/
-  [file] 30_Beaufort_Street_GPR_Recommendations.docx (32.8 KB)
-  [file] 30_beaufort_street_parcel.geojson (1.5 KB)
-  [file] 30_Beaufort_Street_Site_Analysis.docx (21.6 KB)
-  [file] GPR Recommendations #1.pdf (138.6 KB)
-  [file] GPR Recommendations #2.pdf (128.7 KB)
-  [file] GPR Recommendations #3.pdf (148.6 KB)
-  [file] GPR Recommendations #4.pdf (128.3 KB)
-  [file] GPR Recommendations #5.pdf (93.5 KB)
-  [file] GPR Recommendations #6.pdf (148.7 KB)
-  [file] README.md (4.8 KB)  -- GPRTool Test Data
-  [file] test_8storey_site.obj (2.4 KB)
-  [file] test_building_import.dxf (9.5 KB)
-  [file] test_cube.dxf (1.8 KB)
-  [file] test_cube.obj (790 B)
-  [file] test_site_contours.geojson (3.3 KB)
-  [file] test-tower-clean.obj (747 B)
-  [file] test-tower.obj (2.8 KB)
-[file] CLAUDE.md (1.9 KB)  -- CLAUDE.md -- GPRTool
+[file] CLAUDE.md (3.5 KB)  -- CLAUDE.md -- GPRTool
 [file] copilot_mcp.bat (485 B)
-[file] deploy.bat (3.6 KB)
-[file] deploy.env (170 B)
+[file] deploy.bat (3.5 KB)
+[file] deploy.env (229 B)
 [file] poll_vercel.ps1 (3.2 KB)  -- poll_vercel.ps1 - called by deploy.bat after git push
 [file] start.bat (346 B)

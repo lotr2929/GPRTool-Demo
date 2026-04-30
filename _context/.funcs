@@ -1,72 +1,409 @@
 # GPRTool -- function index
-# Generated: 14 Apr 2026  11:37 am
+# Generated: 30 Apr 2026  2:47 pm
+
+## api/projects.js  (7 KB)
+  sbHeaders()  --  constructs standard API headers
+  sbFetch(path, opts)  --  sends a request to the API with standard headers and returns the response text
+  extractGPRContents(gpr_data_b64)  --  Uses the ZIP local file header format — no full decompression needed.
+
+## api/overpass.js  (2 KB)
+  hashQuery(q)  --  generates a hash value from a given query string
+
+## app/js/cadmapper-import.js  (28 KB)
+  initCADMapperImport(callbacks)  --  ── Init ───────────────────────────────────────────────────────────────────
+  openModal()  --  displays the modal overlay
+  closeModal()  --  hides the modal overlay
+  showStep1()  --  displays step 1 of the wizard
+  showStep2()  --  displays step 2 of the wizard
+  setStatus(msg, isError)  --  updates the status message with an optional error flag
+  onFileSelected(e)  --  handles the selection of a file
+  runImport()  --  initiates the import process with the selected file and user input
+  parseCadmapperDXF(text, selectedLayers, THREE)  --  ── DXF parser ─────────────────────────────────────────────────────────────
+  parseMeshBlock(pairs, THREE)  --  ── Parse a MESH entity block into BufferGeometry ─────────────────────────
+  parseLWPolylineBlock(pairs)  --  ── Parse a LWPOLYLINE entity block into vertex list ──────────────────────
+  isClosed(pts)  --  ── Check if a polyline is closed (first ≈ last vertex) ───────────────────
+  buildLayerPanel(layerGroups, container)  --  ── Layer visibility panel (injected into right panel after load) ──────────
+  _buildLayerRow(layer, group)  --  ── Private: build a single layer row (checkbox + colour dot + label + count) ──
+  appendLayerToPanel(layer, group)  --  has already been built. Falls back to a full panel build if no section exists.
+
+## app/js/cesium-viewer.js  (23 KB)
+  initCesiumViewer(containerId)  --  ── Init ──────────────────────────────────────────────────────────────────
+  _startAutoRotate()  --  enables automatic camera rotation
+  stopAutoRotate()  --  Stop auto-rotate (called when user interacts with the globe).
+  _updateAltitude()  --  updates the displayed altitude of the camera
+  _injectHUD()  --  injects the Heads-Up Display into the DOM
+  _showViewToggle()  --  setCesiumViewMode() instead of the Three.js switchMode() when appropriate.
+  _hideViewToggle()  --  hides the view toggle element
+  _syncViewToggleActive()  --  is the active view; Three.js path manages .active via its own switchMode.
+  showCesiumView()  --  Activate Cesium — hide all Three.js overlays.
+  showThreeJSView()  --  Activate Three.js — hide Cesium only. NPoint modules manage their own visibility.
+  setCesium2D()  --  Switch to top-down 2D-style view at current lat/lng.
+  setCesium3D()  --  *  but with pitch=-35° instead of -90°. Used by the viewport 2D/3D toggle.
+  setCesiumViewMode(mode)  --  *  handler. Keeps the .active class on the buttons in sync.
+  isCesiumActive()  --  *  to Cesium (this) or to Three.js (existing switchMode).
+  setCesiumStreetLevel()  --  sets the viewer to street level view
+  getCameraPosition()  --  returns the current camera position
+  resetCesiumView()  --  resets the Cesium viewer to its default state
+  cesiumClearLotBoundary_internal()  --  removes the lot boundary entity from the viewer
+  flyToSite(lat, lng, alt)  --  flies the camera to a specified site location
+  showLotBoundary(geojson)  --  displays a lot boundary on the viewer
+  clearLotBoundary()  --  removes the lot boundary from the viewer
+  startBoundaryPick(onPoint, onDone)  --  starts the boundary pick process
+  cancelBoundaryPick()  --  cancels the boundary pick process
+  _pickCartesian(windowPos)  --  ── Helpers ───────────────────────────────────────────────────────────────
+  _updateBoundaryPreview()  --  updates the boundary preview polyline
+  pickSurface(windowPos)  --  picks a point on the surface at a specified window position
+  getCameraHeading()  --  returns the current camera heading
+  onCameraChange(callback)  --  listens for changes to the camera
+  startLocationPick(callback)  --  starts the location pick process
+  stopLocationPick()  --  stops the location pick process
+  startIdentifyPick(callback)  --  starts the identify pick process
+  stopIdentifyPick()  --  stops the identify pick process
+
+## app/js/geo.js  (6 KB)
+  initGeo()  --  initialises the geo module with an optional callback for when the map is cleared
+  latlonToMetres(lon, lat, cLon, cLat)  --  ── Lat/lon ↔ metres ──────────────────────────────────────────────────────
+  extractCoordinates(geojson)  --  ── GeoJSON helpers ───────────────────────────────────────────────────────
+  computeBBox(coords)  --  computes the bounding box for a set of latitude and longitude coordinates
+  computePolygonArea(coords)  --  calculates the area of a polygon given its coordinates
+  computePolygonPerimeter(coords)  --  calculates the perimeter of a polygon given its coordinates
+  lonToTileX(lon, z)  --  ── Map tile overlay ──────────────────────────────────────────────────────
+  latToTileY(lat, z)  --  converts a latitude to a tile y-coordinate at a given zoom level
+  tileXToLon(tx, z)  --  converts a tile x-coordinate to a longitude at a given zoom level
+  tileYToLat(ty, z)  --  converts a tile y-coordinate to a latitude at a given zoom level
+  mercatorY(lat)  --  converts a latitude to a Mercator y-coordinate
+  loadMapTiles(bbox)  --  loads map tiles for a given bounding box
+  loadOneTile(tx, ty, z, bbox)  --  loads a single map tile for a given position and zoom level
+  clearMapTiles()  --  clears the currently loaded map tiles
+
+## app/js/local-folder.js  (4 KB)
+  _idbOpen()  --  ── IDB helpers ───────────────────────────────────────────────────────────
+  _idbGet(key)  --  retrieves a value from IndexedDB by key
+  _idbPut(key, value)  --  stores a value in IndexedDB by key
+  isLocalFolderSupported()  --  Is showSaveFilePicker available in this browser?
+  pickLocalSaveFile(suggestedName)  --  prompts the user to select a local file for saving
+  writeBlobToHandle(handle, blob)  --  writes binary data to a file handle
+
+## app/js/grid.js  (9 KB)
+  majorCellSize()  --  ── Auto major cell size ──────────────────────────────────────────────────
+  updateSceneHelpers(siteSpan)  --  ── Scene helpers (grid + axes) ───────────────────────────────────────────
+  showGridSpacingPopup(cx, cy)  --  ── Grid spacing popup ────────────────────────────────────────────────────
+
+## app/js/model.js  (3 KB)
+  loadOBJ(file, onLoaded)  --  ── OBJ ───────────────────────────────────────────────────────────────────
+  loadGLTF(file, onLoaded)  --  ── GLTF / GLB ────────────────────────────────────────────────────────────
+  loadIFC(file, onLoaded)  --  ── IFC ───────────────────────────────────────────────────────────────────
+  addEdgeOverlay(modelGroup)  --  ── Edge overlay ──────────────────────────────────────────────────────────
+  detectAndApplyUnitScale(group)  --  ── Unit scale detection ──────────────────────────────────────────────────
+
+## app/js/gpr-file.js  (10 KB)
+  openDB()  --  ── IndexedDB helpers ─────────────────────────────────────────────────────
+  idbPut(id, blob)  --  stores a blob in the indexed database with the specified id
+  idbGet(id)  --  retrieves a blob from the indexed database by id
+  getActiveProjectId()  --  returns the id of the currently active project
+  getActiveGPRBlob()  --  gets the active gpr file as a blob for uploading
+  createInitialGPR()  --  creates a new initial gpr file with the provided details
+  addBoundaryToGPR(geojson)  --  adds a boundary to the active gpr file
+  addTerrainToGPR(payload)  --  adds terrain data to the active gpr file
+  getTerrainFromGPR()  --  retrieves terrain data from the active gpr file
+  openGPR(file)  --  opens a gpr file and loads its contents
+  getDXFFromGPR()  --  ── Get DXF bytes from active project (for re-import) ────────────────────
+  downloadGPR(filename)  --  ── Download the active .gpr ──────────────────────────────────────────────
+
+## app/js/osm-import.js  (59 KB)
+  initOSMImport(callbacks)  --  ── Init ──────────────────────────────────────────────────────────────────
+  openModal()  --  displays the OSM overlay modal
+  closeModal()  --  hides the OSM overlay modal
+  _locateCallback()  --  handles location callback with latitude and longitude
+  _phaseBRepositionCallback()  --  Phase B repositioning: clicking the map updates coords and stays in Phase B
+  _setLocateMode()  --  sets the locate mode for OSM
+  _setIdentifyMode()  --  sets the identify mode for OSM
+  _toggleIdentify()  --  toggles between locate and identify modes
+  _renderIdentifyBtn()  --  renders the identify button
+  _identifyAt(lat, lng)  --  Reverse-geocode via Nominatim and update the Phase A hint span with the result.
+  _startHoverTooltip()  --  Uses Cesium's camera.pickEllipsoid to convert screen → lat/lng.
+  onMove(e)  --  handles pointer move events
+  onLeave()  --  handles pointer leave events
+  _stopHoverTooltip()  --  stops the hover tooltip
+  _getLastHoverLabel(lat, lng)  --  gets the last hover label
+  _formatNominatimLabel(data)  --  are not useful for labelling a site file.
+  _showPhaseA()  --  transition and on every click-to-reposition.
+  _showPhaseB()  --  shows phase B of the OSM overlay
+  _backToPhaseA()  --  goes back to phase A of the OSM overlay
+  openImportModal()  --  Opens Phase B directly using the location already set in Stage 1.
+  _updateCoordsDisplay()  --  updates the coordinates display
+  searchAddress()  --  Replaces Nominatim — Google returns building-level precision for AU addresses.
+  setStatus(msg, isError)  --  sets the status message
+  latLngToBbox(lat, lng, radiusM)  --  ── WGS84 bounding box from lat/lng centre + radius in metres ────────────
+  buildOverpassQuery(bbox)  --  ── Overpass query builder ────────────────────────────────────────────────
+  fetchOverpass(query)  --  fetches Overpass data
+  lonToTileX(lon, z)  --  Elevation = (R * 256 + G + B/256) - 32768 metres
+  latToTileY(lat, z)  --  converts latitude to tile Y
+  tileXToLon(tx, z)  --  converts tile X to longitude
+  tileYToLat(ty, z)  --  converts tile Y to latitude
+  fetchTerrainMesh(bbox, THREE)  --  fetches the terrain mesh
+  fetchTerrainTile(tx, ty, z)  --  fetches a terrain tile
+  loadImage(url)  --  loads an image
+  buildTerrainGeometry(points, THREE)  --  builds the terrain geometry
+  classifyWay(tags)  --  Classify an OSM way into a layer key
+  wayToLatLngs(el)  --  Get geometry nodes from Overpass 'out geom' response
+  buildContourLines(points, intervalM, THREE)  --  ── Generate contour lines from terrain point cloud ───────────────────────
+  buildBuilding(ring, height, THREE)  --  ── Build extruded building mesh from footprint ring ──────────────────────
+  buildRoadPolygon(ring, halfWidth, THREE)  --  Build road polygon by buffering centerline ±halfWidth
+  buildFlatPolygon(pts, THREE)  --  Build flat filled polygon from XZ points
+  buildLine(ring, THREE)  --  Build flat line from lat/lng ring
+  buildLayerGroups(osmData, THREE)  --  ── Main OSM data → layerGroups ───────────────────────────────────────────
+  buildLayerGroupsFromGeoJSON(featureCollection, THREE)  --  (roads, paths, contours, railways). All coords are [lng, lat] WGS84.
+  osmToGeoJSON(osmData)  --  All tags preserved as properties. _gprLayer matches LAYER_CONFIG keys.
+  _openCacheDB()  --  opens the cache database
+  _bboxKey(bbox, radius)  --  gets the bounding box key
+  _getCached(key)  --  gets cached data
+  _setCached(key, data)  --  sets cached data
+  runImport()  --  4. Overpass fetch → buildLayerGroups → onLayersLoaded (flip Cesium→Three.js)
+  _runTerrainWorker(bbox, zone)  --  ── Terrain Web Worker launcher ───────────────────────────────────────────
+  _buildTerrainFromWorker(msg)  --  builds terrain from worker message
+  ptAt(globalIy, globalIx)  --  gets the point at a given position
+  rebuildTerrainFromPayload(payload)  --  rebuilds the terrain from a payload
+
+## app/js/real-world.js  (11 KB)
+  setRealWorldAnchor(zone, easting, northing)  --  sets a real-world anchor with zone, easting, and northing coordinates
+  getRealWorldAnchor()  --  @returns {{ zone, easting, northing, hemisphere, lat, lng } | null}
+  hasRealWorldAnchor()  --  True if a Real World anchor has been set.
+  clearRealWorldAnchor()  --  Clear the anchor (e.g. when loading a new project).
+  setSceneOffset(x, z)  --  sets the offset of the scene in the x and z directions
+  getSceneOffset()  --  retrieves the current scene offset
+  utmToWGS84(easting, northing, zone, hemisphere)  --  converts UTM coordinates to WGS84 coordinates
+  wgs84ToUTM(lat, lng, zone)  --  converts WGS84 coordinates to UTM coordinates
+  sceneToUTM(sceneX, sceneZ)  --  converts scene coordinates to UTM coordinates
+  utmToScene(easting, northing)  --  converts UTM coordinates to scene coordinates
+  sceneToWGS84(sceneX, sceneZ)  --  converts scene coordinates to WGS84 coordinates
+  wgs84ToScene(lat, lng)  --  converts WGS84 coordinates to scene coordinates
 
 ## app/js/north-point-2d.js  (26 KB)
   parseNorthAngle(str)  --  Returns decimal degrees (+ve = east/clockwise) or null on error
   formatNorthAngle(deg)  --  formatNorthAngleCompact: no spaces for the small compass label (e.g. "7°22'W")
-  formatNorthAngleCompact(deg)  --  formats a compass angle in degrees with direction (E/W) and minutes
+  formatNorthAngleCompact(deg)  --  formats north angle in degrees to a compact string
   heightFromWidth(w)  --  ── Size / position helpers ───────────────────────────────────
-  applySize(w)  --  sets the width and height of the north point element within defined limits
-  applyPos(right, bottom)  --  positions the north point element within viewport boundaries
+  applySize(w)  --  adjusts the size of the north point element to a given width
+  applyPos(right, bottom)  --  applies a new position to the north point element
   saveState()  --  ── Persistence ───────────────────────────────────────────────
-  restoreState()  --  restores saved state from localStorage including size and visibility
-  resetPosInternal()  --  resets the north point position to default margins and saves state
+  restoreState()  --  restores the north point state from local storage
+  resetPosInternal()  --  resets the position of the north point element to its initial position
   applyDesignNorth(deg)  --  ── Design North ──────────────────────────────────────────────
-  applyGlobalNorth(deg)  --  updates the global north angle and refreshes the design north label
+  applyGlobalNorth(deg)  --  applies a new global north angle to the north point
   angleFromNPCenter(clientX, clientY)  --  ── Design North input field ──────────────────────────────────
-  enterRotateMode()  --  enables rotation mode with visual feedback
-  exitRotateMode()  --  disables rotation mode and resets cursor state
-  showDNInput(autoFocus)  --  displays the design north input field with optional auto-focus
-  hideDNInput()  --  hides the design north input field and cleans up event listeners
-  onDNKeyCapture(e)  --  handles keyboard events for the design north input field
-  onClickOutsideDNInput(e)  --  hides the design north input when clicking outside it
+  enterRotateMode()  --  enters rotate mode for the north point element
+  exitRotateMode()  --  exits rotate mode for the north point element
+  showDNInput(autoFocus)  --  shows the design north input field
+  hideDNInput()  --  hides the design north input field
+  onDNKeyCapture(e)  --  handles key presses in the design north input field
+  onClickOutsideDNInput(e)  --  hides the design north input field when clicked outside
   showTNInput(autoFocus)  --  ── True North input field (mirrors showDNInput but targets globalNorthAngle) ────────
-  hideTNInput()  --  hides the true north input field and cleans up event listeners
-  onTNKeyCapture(e)  --  handles keyboard events for the true north input field
-  onClickOutsideTNInput(e)  --  hides the true north input when clicking outside it
+  hideTNInput()  --  hides the true north input field
+  onTNKeyCapture(e)  --  handles key presses in the true north input field
+  onClickOutsideTNInput(e)  --  hides the true north input field when clicked outside
   injectDNGroup(svg)  --  Shaft:            y = 28 → y = 37 (stops before centre clutter)
   toggleNorthPoint()  --  ── Public API ────────────────────────────────────────────────
-  setNorthPoint2DVisible(visible)  --  shows or hides the north point 2D element
-  resetNorthPos()  --  resets the north point position to default margins
-  updateNorthRotation()  --  updates the north point rotation based on current mode and camera state
-  getDesignNorthAngle()  --  returns the current design north angle
-  getGlobalNorthAngle()  --  returns the current global north angle
+  setNorthPoint2DVisible(visible)  --  sets the visibility of the north point 2D element
+  resetNorthPos()  --  resets the position of the north point element
+  updateNorthRotation()  --  updates the rotation of the north point element
+  getDesignNorthAngle()  --  gets the design north angle
+  getGlobalNorthAngle()  --  gets the global north angle
   resetDesignNorth()  --  resets the design north angle to 0
-  setNorthPointMode(mode)  --  switches between 3D and 2D modes for the north point
-  initNorthPoint2D(getStateCallback)  --  initializes the north point 2D element and sets up event listeners
+  setNorthPointMode(mode)  --  sets the mode of the north point element
+  initNorthPoint2D(getStateCallback)  --  initialises the north point 2D element
   onResizeDown(e)  --  ── Resize ────────────────────────────────────────────────────
-  handleResize(e)  --  handles resizing of the north point element during resize operations
-  stopResize()  --  stops the resize operation and cleans up state
+  handleResize(e)  --  handles resizing of the north point element
+  stopResize()  --  stops resizing of the north point element
   onDragDown(e)  --  ── Drag ──────────────────────────────────────────────────────
-  handleDrag(e)  --  handles dragging of the north point element for rotation
-  stopDrag()  --  stops the drag operation and cleans up state
+  handleDrag(e)  --  handles drag events on the north point element
+  stopDrag()  --  stops drag events on the north point element
   onPointerMove(e)  --  ── Combined pointer handlers ─────────────────────────────────
-  onPointerUp()  --  handles pointer up events to stop resize and drag operations
+  onPointerUp()  --  handles pointer up events on the north point element
 
-## app/js/north-point-3d.js  (11 KB)
+## app/js/projects.js  (26 KB)
+  blobToBase64(blob)  --  ── Blob ↔ base64 helpers ─────────────────────────────────────────────────
+  saveProject(gprBlob, meta)  --  saves a project by sending a POST request to the API
+  listProjects()  --  ── List ──────────────────────────────────────────────────────────────────
+  loadProject(id)  --  retrieves a project by ID from the API
+  deleteProject(id)  --  ── Delete ────────────────────────────────────────────────────────────────
+  showSaveProjectDialog()  --  triggers a confirmation before overwriting.
+  initProjects()  --  initialises the projects modal overlay
+  showProjectsModal(onOpen)  --  displays the projects modal
+  hideProjectsModal()  --  hides the projects modal
+  loadProjectList()  --  loads and displays the list of projects
+  updateDeleteBtn()  --  updates the delete button based on the number of selected projects
+
+## app/js/north-point-3d.js  (16 KB)
   _buildCompassMesh()  --  ── Compass mesh ──────────────────────────────────────────────
-  updateGizmoTexture(dnDeg, gnDeg)  --  gnDeg: Global (True) North decimal degrees.
+  _fmtAngleCompact(deg)  --  no Blob, no Image roundtrip. Renders at full 512×512 resolution.
+  _drawCompass(dnDeg, gnDeg)  --  draws the compass with given declination and grid north angles
   _buildOverlay()  --  ── Overlay div ───────────────────────────────────────────────
-  _setSelected(sel)  --  sets the selected state and updates the display accordingly
-  _onPointerDown(e)  --  handles mouse down events for the gizmo handles
-  _onPointerMove(e)  --  handles mouse move events for the gizmo
-  _onPointerUp(e)  --  handles mouse up events and resets the drag and resize states
+  _setSelected(sel)  --  sets the gizmo as selected or unselected
+  _onPointerDown(e)  --  handles pointer down event for gizmo interactions
+  _onPointerMove(e)  --  handles pointer move event while resizing or dragging the gizmo
+  _onPointerUp(e)  --  handles pointer up event after gizmo interactions
+  _saveGizmo3DState()  --  saves the current gizmo 3D state to local storage
+  _loadGizmo3DState()  --  loads the gizmo 3D state from local storage
   initNorthPoint3D(getStateCallback)  --  ── Public API ────────────────────────────────────────────────
-  updateGizmoOverlay()  --  updates the gizmo overlay visibility and size
-  isGizmo3DVisible()  --  checks if the 3D gizmo is visible
-  toggleGizmo3D()  --  toggles the visibility of the 3D gizmo and updates the overlay
-  renderCompassGizmo()  --  renders the compass gizmo with the specified size and camera settings
+  updateGizmoOverlay()  --  updates the gizmo overlay based on visibility and size
+  isGizmo3DVisible()  --  checks if the gizmo 3D is visible
+  toggleGizmo3D()  --  toggles the visibility of the gizmo 3D
+  renderCompassGizmo()  --  renders the compass gizmo with the given renderer and camera
+
+## app/js/site-selection.js  (17 KB)
+  initSiteSelection()  --  ── Init ───────────────────────────────────────────────────────────────────
+  openModal()  --  ── Modal open / close ─────────────────────────────────────────────────────
+  closeModal()  --  hides the site selection overlay
+  setStatus(msg, isError)  --  updates the site selection status message with a given text and colour
+  runSearch()  --  ── Geocode with Nominatim ─────────────────────────────────────────────────
+  geocodeGoogle(query)  --  Google Maps via Vercel proxy — precise, house-level results
+  geocodeNominatim(query)  --  Nominatim fallback
+  bboxArea(r)  --  calculates the area of a bounding box
+  nominatimSearch(url)  --  performs a search using the Nominatim API at a given URL
+  renderResults(results)  --  ── Render geocode results ─────────────────────────────────────────────────
+  fetchParcel(lat, lng)  --  the returned parcel, not at its edge.
+  pointInPolygon(lat, lng, coords)  --  ── Point-in-polygon test (ray casting, [lon,lat] coords) ────────────────
+  polygonAreaDeg(coords)  --  ── Rough polygon area in degrees² (for sorting only) ─────────────────────
+  loadSelected()  --  ── Load selected result ───────────────────────────────────────────────────
+
+## app/js/plants.js  (24 KB)
+  recalcGPR()  --  recalculates and updates the Ground Plant Ratio (GPR) display
+  updateClearBtn()  --  enables or disables the clear plants button based on whether any plants are planted
+  addPlantInstance(surface, species, canopyArea)  --  adds a new plant instance to a surface and updates related displays
+  removePlantInstance(surface, instanceId)  --  removes a plant instance from a surface and updates related displays
+  updateInstanceCanopyArea(surface, instanceId, newArea)  --  updates the canopy area of a plant instance and recalculates GPR
+  updateSurfaceListTag(surface)  --  updates the plant count tag for a surface in the UI
+  renderSurfacePlantSchedule(surface)  --  renders the plant schedule section for a surface
+  renderPlantList()  --  renders the filtered and searched plant list in the UI
+  refreshModalStatus()  --  refreshes the status display in the plant selection modal
+  openPlantModal()  --  opens the plant selection modal and shows feedback if the plant library isn't loaded
+  closePlantModal()  --  closes the plant selection modal and resets its state
+  placementTypeForCategory(cat)  --  determines the placement type (circle or polygon) based on plant category
+  substrateCapRadius(depth_mm)  --  calculates the substrate cap radius based on depth in millimeters
+  substrateCapLabel(depth_mm)  --  returns the appropriate substrate cap label based on depth in millimeters
+  radiusLimits(species, surface)  --  returns the minimum, maximum, and typical canopy radius limits for a species
+  getSurfaceCentre(surface)  --  calculates and returns the world-space center point of a surface
+  raycastSurface(ndc, surface)  --  performs a raycast against a surface and returns the intersection point
+  worldToSurfaceUV(worldPt, surface)  --  converts a world-space point to surface-local UV coordinates
+  surfaceUVToWorld(u, v, surface)  --  converts surface-local UV coordinates to world-space coordinates
+  canvasNDC(e)  --  converts mouse event coordinates to normalized device coordinates (NDC)
+  startPlacement(species)  --  initializes the placement process for a new plant instance
+  cancelPlacement()  --  cancels the current placement process and resets related state
+  clearPreview()  --  removes any existing preview meshes from the scene
+  showCirclePreview(cx, cz, radius, surface)  --  displays a preview circle for plant placement
+  showPolygonPreview(pts, mouseUV, surface)  --  displays a preview polygon for plant placement
+  commitCirclePlacement(surface, species, centre, radius, area)  --  finalizes a circle-shaped plant placement and adds it to the surface
+  commitPolygonPlacement(surface, species, polyPts)  --  finalizes a polygon-shaped plant placement and adds it to the surface
+  polygonArea(pts)  --  calculates the area of a polygon defined by UV coordinates
+  proxyMatForCategory(cat)  --  returns the appropriate proxy material based on plant category
+  buildCircleProxy(inst, surface, species)  --  creates and returns a proxy mesh for a circular plant instance
+  buildPolygonProxy(inst, surface, species)  --  creates and returns a proxy mesh for a polygonal plant instance
+  removeProxyForInstance(inst)  --  removes the proxy mesh associated with a plant instance
+  clearAllProxies()  --  removes all proxy meshes from the scene
+
+## app/js/site.js  (14 KB)
+  drawSiteBoundary(coords, opts)  --  draws a site boundary given coordinates and options
+  startBoundaryDraw()  --  initiates boundary drawing mode
+  handleBoundaryClick(sceneX, sceneZ)  --  handles user click events during boundary drawing
+  handleBoundaryMouseMove(screenX, screenY)  --  Called on every mousemove in 2D boundary-draw mode
+  handleBoundaryDblClick()  --  handles user double click events during boundary drawing
+  confirmBoundaryDraw()  --  confirms and finalises the boundary drawing
+  cancelBoundaryDraw()  --  cancels the current boundary drawing operation
+  _updateBdPreview()  --  updates the boundary drawing preview
+  _clearBdPreview()  --  clears the boundary drawing preview
+  buildBoundaryPanel(wgs84Bounds, hasExisting, onDraw)  --  ── Lot boundary panel (right panel, after DXF import) ────────────────────
+  clearLotBoundary()  --  removes the current lot boundary from the scene
+  renderLotBoundary(boundaryGeojson)  --  renders a lot boundary based on given GeoJSON data
+  buildLotBoundaryLayerRow()  --  constructs a layer row for lot boundary display
+  showSitePin(lat, lng)  --  displays a site pin at the specified geographic coordinates
+  updateSitePinDOM()  --  updates the site pin's position in the DOM
+
+## app/js/surfaces.js  (12 KB)
+  initSurfaces()  --  initialises surface-related functions with provided callbacks
+  classifyNormal(normal)  --  ── Surface classification ─────────────────────────────────────────────────
+  computeMeshArea(mesh)  --  ── Mesh area ─────────────────────────────────────────────────────────────
+  computeDominantNormal(mesh)  --  ── Dominant normal ───────────────────────────────────────────────────────
+  vKey(v)  --  generates a unique key for a 3D vector by snapping to grid and formatting coordinates
+  extractAllTriangles(modelGroup)  --  traverses a 3D model group and extracts all triangular faces
+  buildCoplanarPatches(tris)  --  groups triangles into coplanar patches based on their normal and distance
+  patchArea(tris)  --  calculates the total area of a patch of triangles using cross products
+  detectSurfaces(modelGroup)  --  ── detectSurfaces ────────────────────────────────────────────────────────
+  typeMat(s)  --  ── Surface materials ─────────────────────────────────────────────────────
+  applyMatToSurface(s, mat)  --  applies a material to a surface's mesh if it exists
+  hoverSurface(s)  --  ── Hover / select ────────────────────────────────────────────────────────
+  unhoverSurface(s)  --  removes hover state from a surface unless it's selected
+  selectSurface(s)  --  selects a surface and applies the selected material
+  deselectSurface()  --  deselects the current surface and clears any canvas outlines
+  allSurfaceMeshes()  --  ── Raycasting helper ─────────────────────────────────────────────────────
+  getPointerNDC(e)  --  converts mouse coordinates to normalised device coordinates (NDC)
+  populateSurfacePanel(surface)  --  ── Surface panel ─────────────────────────────────────────────────────────
+
+## app/js/terrain-worker.js  (9 KB)
+  lonToTileX(lon, z)  --  ── Tile helpers ─────────────────────────────────────────────────────────
+  latToTileY(lat, z)  --  converts latitude to tile Y coordinate for a given zoom level
+  tileXToLon(tx, z)  --  converts tile X coordinate to longitude for a given zoom level
+  tileYToLat(ty, z)  --  converts tile Y coordinate to latitude for a given zoom level
+  wgs84ToUTM(lat, lng, zone)  --  ── UTM helpers (lightweight, no imports) ────────────────────────────────
+  fetchTile(tx, ty, z, anchorX, anchorY)  --  ── Fetch a single Terrarium tile, return { points: [{lat,lng,ele,x,y}] } ─
+  buildContours(points, gridWidth, gridHeight, tilesX, tilesY, intervalM)  --  so no floating-point coordinate matching is needed.
+
+## app/js/terrain.js  (10 KB)
+  initTerrainBVH(mesh)  --  ── BVH init — call once after terrain mesh is available ──────────────────
+  _raycastY(worldX, worldZ)  --  ── Core raycast — returns world-space Y at (worldX, worldZ) or null ─────
+  getSiteTerrainElevation(x, z, fallback)  --  ── Public elevation query ────────────────────────────────────────────────
+  _snapBuildingToTerrain(buildingMesh)  --  Building stays rigid — only its world-space Y offset changes.
+  _drapeGroupOnTerrain(group, yOffset)  --  ── Road/path drape: project each vertex onto terrain in world space ──────
+  projectGroupOntoTerrain(group)  --  ── Main export: project a layer group onto terrain ───────────────────────
+  _pip(px, pz, ring)  --  ── Point-in-polygon (XZ plane) ───────────────────────────────────────────
+  _boundaryToRing(geojson)  --  converts GeoJSON boundary to a ring of scene coordinates
+  _clipTopoMesh(topoMesh, ring, THREE)  --  clips a topo mesh to a specified ring using Three.js
+  buildSiteTerrain(boundaryGeojson, THREE)  --  ── buildSiteTerrain — triggered after lot boundary is confirmed ──────────
+  clearSiteTerrain()  --  removes and disposes the site terrain group from the scene
+  _buildTerrainLayerRow(group)  --  creates a new terrain layer row element in the DOM
+
+## app/js/ui.js  (6 KB)
+  updateHeaderTime()  --  ── Header clock ──────────────────────────────────────────────────────────
+  setAlarm(timeStr)  --  ── Alarm ─────────────────────────────────────────────────────────────────
+  triggerAlarm()  --  triggers an alarm by updating the UI and state
+  stopAlarm()  --  stops an ongoing alarm and resets relevant state
+  clearAlarm()  --  removes an alarm's visual indication without stopping an ongoing one
+  showFeedback(message, duration)  --  ── Feedback bar ──────────────────────────────────────────────────────────
+  setPipelineStatus(message, chipState)  --  Message is persistent until next call — unlike showFeedback which clears.
+  setStage(stageId, stageState, statusText)  --  updates the state and visual styling of a specific stage
+  initUI()  --  ── Init ──────────────────────────────────────────────────────────────────
+
+## app/js/viewport.js  (12 KB)
+  syncViewportBackground()  --  synchronises the viewport background colour with CSS variable
+  update2DCamera()  --  updates the 2D camera position and zoom, unless in surface canvas mode
+  fit2DCamera(box)  --  calculates and sets camera position to fit a 2D bounding box
+  fit3DCamera(box)  --  calculates and sets camera position to fit a 3D bounding box
+  drawSurfaceCanvasOutline(surface)  --  creates and adds an outline mesh for a surface canvas
+  clearSurfaceCanvasOutline()  --  removes and cleans up the surface canvas outline mesh
+  fitSurfaceCamera(surface)  --  adjusts camera to fit a surface's bounding box in world space
+  switchMode(mode)  --  changes the current mode and updates UI state accordingly
+  resizeToContainer()  --  resizes the viewport to match container dimensions with animation frame
+  toggleAxes()  --  toggles visibility of the axes helper and shows feedback
+  updateGridVisibility(forceMode)  --  controls grid visibility based on current mode and design conditions
+  setGridVisible(v)  --  sets visibility of all grid helpers and design grids
+
+## app/cesium-spike.html  (7 KB)
+  init()  --  ── Boot ───────────────────────────────────────────────────────────────────
+  loadGoogleTiles(key)  --  Requires "Map Tiles API" enabled in Google Cloud Console for your key.
+  flyTo(site)  --  ── Camera ─────────────────────────────────────────────────────────────────
+  toggleTileset()  --  toggles the visibility of the tileset on or off
+  setStatus(msg, isError)  --  ── Status helper ──────────────────────────────────────────────────────────
 
 ## _archive/camera.js  (1 KB)
-  createCamera(renderer, container)  --  creates a PerspectiveCamera with stable FOV, safe clipping, and dynamic aspect ratio
+  createCamera(renderer, container)  --  creates a perspective camera with stable FOV, safe clipping, and dynamic aspect ratio
 
 ## _archive/main.js  (16 KB)
   loadLayout()  --  asynchronously loads and inserts header HTML into the DOM
-  updateHeaderTime()  --  updates the header datetime display with the current time
+  updateHeaderTime()  --  updates the header datetime element with the current time
   fitCameraToObject(object, padding)  --  adjusts the camera to fit a 3D object with optional padding
   resize()  --  updates camera and renderer dimensions to match container size
   applyScale()  --  applies scaling to a cube object and updates its texture mapping
-  animate()  --  continuously updates controls and renders the 3D scene
+  animate()  --  continuously updates controls and renders the scene
   lonLatToMetres(lon, lat, originLon, originLat)  --  converts longitude/latitude coordinates to metres relative to an origin point
   polygonArea(pts)  --  Shoelace formula — area of a 2D polygon from [x,y] pairs
   polygonPerimeter(pts)  --  Perimeter of a polygon from [x,y] pairs
@@ -77,9 +414,9 @@
   drawSiteInScene(localCoords)  --  clears and redraws a site shape in the 3D scene from local coordinates
   updateSitePanel(data)  --  displays site information and hides empty properties section
   parseGeoJSON(text)  --  -- File handling --
-  createAlarmPopup()  --  creates a DOM element for an alarm popup interface
-  setAlarm(timeStr)  --  sets an alarm time and adjusts it to the next day if it's in the past
-  checkAlarm()  --  checks if the current time has reached the alarm time and triggers it if so
+  createAlarmPopup()  --  creates and returns an alarm popup element
+  setAlarm(timeStr)  --  sets an alarm time and adjusts for next day if needed
+  checkAlarm()  --  checks if the current time has reached the alarm time
   triggerAlarm()  --  activates the alarm visual and audio feedback
-  stopAlarm()  --  deactivates the alarm and cleans up related resources
-  clearAlarm()  --  removes alarm-related visual indicators and clears the alarm time
+  stopAlarm()  --  stops the alarm and resets related UI elements
+  clearAlarm()  --  clears the alarm time and resets alarm-related UI elements

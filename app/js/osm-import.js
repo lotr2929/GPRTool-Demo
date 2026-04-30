@@ -503,7 +503,7 @@ async function searchAddress() {
     document.getElementById('osm-lat').value = lat.toFixed(7);
     document.getElementById('osm-lng').value = lng.toFixed(7);
     const { flyToSite } = await import('./cesium-viewer.js');
-    await flyToSite(lat, lng, 800);
+    await flyToSite(lat, lng, 350, true);  // topDown=true: site centred, not offset by pitch
     const label = display_name.slice(0, 70);
     state.siteCenter = { lat, lng, label };
     window.dispatchEvent(new CustomEvent('site:located', { detail: { lat, lng, label } }));

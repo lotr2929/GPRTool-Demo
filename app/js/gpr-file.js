@@ -202,6 +202,37 @@ export async function getTerrainFromGPR() {
   }
 }
 
+// ── Add any raw file to the active project ────────────────────────────────
+
+/**
+ * Write a raw file into the active .gpr ZIP and persist to IndexedDB.
+ * Used by dxf-writer.js and other modules that produce non-JSON artefacts.
+ *
+ * @param {string} zipPath    Path inside the ZIP, e.g. 'context/site.dxf'
+ * @param {string|Uint8Array} content
+ * @param {string|null} sectionName  If set, added to manifest.sections
+ */
+export async function addRawFileToGPR(zipPath, content, sectionName = null) {
+  if (!_activeZip || !_activeProjectId) throw new Error('No active project');
+
+  _activeZip.file(zipPath, content);
+
+  if (sectionName) {
+    const manifestStr = await _activeZip.file('manifest.json').async('string');
+    const manifest    = JSON.parse(manifestStr);
+    if (!manifest.sections.includes(sectionName)) manifest.sections.push(sectionName);
+    manifest.modified = new Date().toISOString();
+    _activeZip.file('manifest.json', JSON.stringify(manifest, null, 2));
+  }
+
+  const blob = await _activeZip.generateAsync({ type: 'blob', compression: 'DEFLATE',
+    compressionOptions: { level: 6 } });
+  await idbPut(_activeProjectId, blob);
+
+  console.log(`[GPR] ${zipPath} saved (${(blob.size / 1024).toFixed(1)} KB)`);
+  return blob;
+}
+
 // ── Open a .gpr file ──────────────────────────────────────────────────────
 
 /**

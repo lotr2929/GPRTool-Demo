@@ -366,9 +366,11 @@ function cesiumClearLotBoundary_internal() {
  *
  * @param {number} lat
  * @param {number} lng
- * @param {number} [alt=800]  Camera altitude in metres ABOVE GROUND
+ * @param {number}  [alt=500]    Camera altitude in metres ABOVE GROUND
+ * @param {boolean} [topDown=false]  true = near-top-down view (Locate Site: user sees exactly
+ *                                   which parcel is selected). false = angled context view.
  */
-export async function flyToSite(lat, lng, alt = 800) {
+export async function flyToSite(lat, lng, alt = 500, topDown = false) {
   if (!_viewer) return;
   _autoRotating = false;
   _siteLocated  = true;
@@ -389,7 +391,7 @@ export async function flyToSite(lat, lng, alt = 800) {
     destination: Cesium.Cartesian3.fromDegrees(lng, lat, groundHeight + alt),
     orientation: {
       heading: Cesium.Math.toRadians(0),
-      pitch:   Cesium.Math.toRadians(-35),
+      pitch:   Cesium.Math.toRadians(topDown ? -75 : -50),
       roll:    0,
     },
     duration: 2.0,
@@ -629,4 +631,91 @@ export function startIdentifyPick(callback) {
 export function stopIdentifyPick() {
   if (_identifyPickHandler) { _identifyPickHandler.destroy(); _identifyPickHandler = null; }
   if (_viewer) _viewer.container.style.cursor = '';
+}
+
+// ── Rectangle Picker ──────────────────────────────────────────────────────────
+// User drags on the Cesium globe to define a WGS84 bounding box.
+// startRectPick(onComplete) — onComplete({north,south,east,west}) in decimal degrees.
+// cancelRectPick()          — discard any in-progress rectangle.
+
+let _rectHandler  = null;
+let _rectEntity   = null;
+let _rectStart    = null;   // Cesium.Cartographic at mousedown
+
+// Convert screen position → Cesium.Cartographic (lat/lng on globe), or null if off-globe.
+function _cartoFromScreen(pos) {
+  if (!_viewer) return null;
+  const ray       = _viewer.scene.camera.getPickRay(pos);
+  const cartesian = _viewer.scene.globe.pick(ray, _viewer.scene);
+  return cartesian ? Cesium.Cartographic.fromCartesian(cartesian) : null;
+}
+
+// Build {north,south,east,west} in degrees from two Cartographics.
+function _bbox(a, b) {
+  return {
+    north: Cesium.Math.toDegrees(Math.max(a.latitude,  b.latitude)),
+    south: Cesium.Math.toDegrees(Math.min(a.latitude,  b.latitude)),
+    east:  Cesium.Math.toDegrees(Math.max(a.longitude, b.longitude)),
+    west:  Cesium.Math.toDegrees(Math.min(a.longitude, b.longitude)),
+  };
+}
+
+function _cleanupRect() {
+  if (_rectHandler)  { _rectHandler.destroy(); _rectHandler = null; }
+  if (_rectEntity)   { _viewer.entities.remove(_rectEntity); _rectEntity = null; }
+  _rectStart = null;
+  if (_viewer) _viewer.container.style.cursor = '';
+}
+
+export function startRectPick(onComplete) {
+  if (!_viewer) return;
+  cancelRectPick();   // clear any previous pick
+  _viewer.container.style.cursor = 'crosshair';
+
+  _rectHandler = new Cesium.ScreenSpaceEventHandler(_viewer.scene.canvas);
+
+  // LEFT_DOWN: record start position only
+  _rectHandler.setInputAction(e => {
+    const carto = _cartoFromScreen(e.position);
+    if (!carto) return;
+    _rectStart = carto;
+    // Create the preview entity with a CallbackProperty so it updates live
+    _rectEntity = _viewer.entities.add({
+      rectangle: {
+        coordinates: new Cesium.CallbackProperty(() => {
+          if (!_rectStart || !_rectCurrent) return null;
+          const b = _bbox(_rectStart, _rectCurrent);
+          return Cesium.Rectangle.fromDegrees(b.west, b.south, b.east, b.north);
+        }, false),
+        material:     Cesium.Color.YELLOW.withAlpha(0.15),
+        outline:      true,
+        outlineColor: Cesium.Color.YELLOW,
+        outlineWidth: 2,
+      },
+    });
+  }, Cesium.ScreenSpaceEventType.LEFT_DOWN);
+
+  // MOUSE_MOVE: update live preview
+  let _rectCurrent = null;
+  _rectHandler.setInputAction(e => {
+    if (!_rectStart) return;
+    _rectCurrent = _cartoFromScreen(e.endPosition) || _rectCurrent;
+  }, Cesium.ScreenSpaceEventType.MOUSE_MOVE);
+
+  // LEFT_UP: finalise
+  _rectHandler.setInputAction(e => {
+    if (!_rectStart) return;
+    const end = _cartoFromScreen(e.position);
+    if (end) {
+      const bbox = _bbox(_rectStart, end);
+      _cleanupRect();
+      onComplete(bbox);
+    } else {
+      _cleanupRect();
+    }
+  }, Cesium.ScreenSpaceEventType.LEFT_UP);
+}
+
+export function cancelRectPick() {
+  _cleanupRect();
 }

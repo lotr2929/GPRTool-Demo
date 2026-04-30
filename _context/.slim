@@ -1,8 +1,8 @@
-Stack: HTML/CSS/JS, Three.js, Vercel/GitHub. No npm.
-Target architecture: Modular JS files in `app/js/` with strict extraction rule.
-Browser-specific: Chrome issues; use Edge for development.
-File structure: `app/js/` with subfolder `tools/` only, no globals.
-Module rules: Explicit dependencies, ES modules, no global variables.
+Stack: HTML/CSS/JS, Three.js, Microsoft Edge for development
+The project uses ES module exports and imports
+The target directory structure has a specific set of files in app/js/
+Third-party libraries are stored in the lib folder and should never be edited
+Microsoft Edge is the recommended browser for development and testing due to Chrome compatibility issues
 
 ---
 # GPRTool -- file index
@@ -16,16 +16,47 @@ _archive/lai_count.py
 _archive/main.js  --  main.js — GPRTool (Boon Ong / Curtin University)
 _archive/README.md  --  _archive — GPRTool-Demo
 _context/brief_benchmark_compass3d.md  --  Brief Benchmark — NPoint Compass 3D Back-Face Bug
+_dev/domains/compass.md  --  Compass (NPoint)
+_dev/domains/DOMAIN_TEMPLATE.md  --  [SYSTEM NAME]
+_dev/_architecture.md  --  GPRTool Architecture — Session Reference
 _dev/_design.md  --  GPRTool — Design & Development Guide
 _dev/_dev_guide.md  --  GPRTool — Developer Guide
-_dev/_journal.md  --  GPRTool Development Journal
+_dev/_journal.md  --  GPRTool Session Log — Sat 18 Apr 2026
 _dev/_map.md  --  GPRTool — Repository Map
 _dev/_session.md  --  GPRTool — Session Status
+_dev/poll_vercel.ps1  --  poll_vercel.ps1 - called by deploy.bat after git push
+_dev/vision.md  --  GPRTool Vision & Long-Range Architecture
+api/geocode.js
+api/maps-key.js
+api/overpass.js
+api/projects.js
+app/js/app.js  --  REAL WORLD (coordinates, geography) — import only from real-world.js ──
+app/js/cadmapper-import.js
+app/js/cesium-viewer.js
+app/js/design-grid.js
+app/js/geo.js
+app/js/gpr-file.js
+app/js/grid.js
+app/js/local-folder.js
+app/js/model.js
 app/js/north-point-2d.js
 app/js/north-point-3d.js
 app/js/OrbitControls.js  --  Simplified, stable OrbitControls
+app/js/osm-import.js
+app/js/plants.js
+app/js/projects.js
+app/js/real-world.js
+app/js/site-selection.js
+app/js/site.js
+app/js/state.js
+app/js/surfaces.js
+app/js/terrain-worker.js
+app/js/terrain.js
 app/js/three.module.js
+app/js/ui.js
+app/js/viewport.js
 app/body.html  --  Main Content Area
+app/cesium-spike.html
 app/header.html  --  Undo / Redo arrows — far left, always visible
 app/index.html
 app/plants_free.json
@@ -35,7 +66,6 @@ lai/lai_categorise.py
 lai/LAI_DATABASE_STRATEGY.md  --  GPRTool LAI Database Strategy
 lai/lai_explorer.py
 lai/merge_singapore_lai.py
-projects/README.md  --  GPRTool Test Data
 CLAUDE.md  --  CLAUDE.md -- GPRTool
 copilot_mcp.bat
 deploy.bat
